@@ -2,6 +2,7 @@ from functools import wraps
 from flask import session, redirect, url_for
 import os
 from flask import Flask, render_template, jsonify, request
+from accumulation_scanner import run_accumulation_scan
 from scanner import run_scan
 from darvas_scanner import run_darvas_scan
 from trendline_scanner import run_trendline_scan
@@ -72,6 +73,30 @@ def login():
     </body>
     </html>
     '''
+
+# ── ACCUMULATION ──
+
+@app.route('/api/accumulation')
+def api_accumulation():
+    exchange, fo_only, _ = get_params()
+    ensure_preloaded(exchange)
+    min_score = int(request.args.get('min_score', 1))
+    cache_key = f"accumulation_{exchange}_{min_score}"
+    if cache_key not in _cache:
+        _cache[cache_key] = run_and_enrich(
+            run_accumulation_scan, exchange=exchange, min_score=min_score)
+    return to_json(filter_fo(_cache[cache_key], fo_only))
+
+@app.route('/api/accumulation/refresh')
+def api_accumulation_refresh():
+    exchange, fo_only, _ = get_params()
+    ensure_preloaded(exchange)
+    min_score = int(request.args.get('min_score', 1))
+    cache_key = f"accumulation_{exchange}_{min_score}"
+    _cache.pop(cache_key, None)
+    _cache[cache_key] = run_and_enrich(
+        run_accumulation_scan, exchange=exchange, min_score=min_score)
+    return to_json(filter_fo(_cache[cache_key], fo_only))
 
 @app.route('/logout')
 def logout():

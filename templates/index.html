@@ -132,6 +132,11 @@
   .badge-confluence { background: #2a2a00; color: #ffdd44; }
   .badge-baby       { background: #2a2a1a; color: #ffcc44; }
   .badge-attempt    { background: #2a1a00; color: #ffaa44; }
+  .badge-gap-up     { background: #0a3a1a; color: #00ffaa; }
+  .badge-gap-down   { background: #3a0a0a; color: #ff6666; }
+  .badge-score-high { background: #0a4a1a; color: #00ff88; }
+  .badge-score-mid  { background: #1a3a1a; color: #44ff88; }
+  .badge-score-low  { background: #2a2a1a; color: #ffcc44; }
 
   .levels-cell { font-size: 0.75rem; color: #888; line-height: 1.6; }
   .levels-cell b { color: #aaa; }
@@ -151,6 +156,10 @@
   tr.row-attempt:hover { background: #2a2414; }
   tr.row-baby    { background: #1a1a1a; }
   tr.row-baby:hover    { background: #222222; }
+  tr.row-gap-up  { background: #0f1e14; }
+  tr.row-gap-up:hover  { background: #162a1e; }
+  tr.row-gap-down { background: #1e0f0f; }
+  tr.row-gap-down:hover { background: #2a1414; }
 </style>
 </head>
 <body>
@@ -173,6 +182,7 @@
   <div class="tab"        onclick="switchTab('trendline')">📈 Trendline / Support</div>
   <div class="tab"        onclick="switchTab('breakout')">🚀 Breakout / Breakdown</div>
   <div class="tab"        onclick="switchTab('insidebar')">🕯️ Inside Bar</div>
+  <div class="tab"        onclick="switchTab('accumulation')">📊 Accumulation</div>
 </div>
 
 <!-- ════════════════ PIVOT ════════════════ -->
@@ -363,8 +373,6 @@
         <option value="">All</option>
         <option value="Horizontal">Horizontal Support</option>
         <option value="Rising">Rising Trendline</option>
-        <option value="Daily">Daily Only</option>
-        <option value="Weekly">Weekly Only</option>
       </select>
     </div>
     <div><label>Min Vol Ratio</label>
@@ -433,6 +441,8 @@
         <option value="Breakout">Breakout</option>
         <option value="Fresh Breakdown">Fresh Breakdown</option>
         <option value="Breakdown">Breakdown</option>
+        <option value="Gap Up">🟢 Gap Up</option>
+        <option value="Gap Down">🔴 Gap Down</option>
       </select>
     </div>
     <div><label>Timeframe</label>
@@ -475,6 +485,7 @@
         <th>Level</th>
         <th onclick="sortTable('breakout','Move %')">Move % ↕</th>
         <th>Both TF</th>
+        <th onclick="sortTable('breakout','Gap %')">Gap % ↕</th>
         <th onclick="sortTable('breakout','Vol Ratio')">Vol Ratio ↕</th>
         <th>Vol Rising</th>
       </tr></thead>
@@ -575,8 +586,73 @@
   </div>
 </div>
 
+<!-- ════════════════ ACCUMULATION ════════════════ -->
+<div id="section-accumulation" class="section">
+  <div class="controls">
+    <div><label>Exchange</label>
+      <select id="accumulation-exchange">
+        <option value="BOTH">NSE + BSE</option>
+        <option value="NSE">NSE Only</option>
+        <option value="BSE">BSE Only</option>
+      </select>
+    </div>
+    <div><label>Universe</label>
+      <select id="accumulation-fo" class="fo-toggle">
+        <option value="false">All Stocks</option>
+        <option value="true">F&amp;O Only</option>
+      </select>
+    </div>
+    <div><label>Min Score</label>
+      <select id="accumulation-score" class="n-select">
+        <option value="1">1+ signals</option>
+        <option value="2">2+ signals</option>
+        <option value="3">3+ signals</option>
+        <option value="4">All 4 signals</option>
+      </select>
+    </div>
+    <div><label>Signal Filter</label>
+      <select id="accumulation-signal">
+        <option value="">All</option>
+        <option value="Tight+Vol">Tight Range + Vol↑</option>
+        <option value="Vol Spike">Vol Spike + Flat</option>
+        <option value="OBV">OBV Rising</option>
+        <option value="52W Low">Near 52W Low</option>
+      </select>
+    </div>
+    <div><label>Min Vol Ratio</label>
+      <input type="text" id="accumulation-volratio" placeholder="e.g. 1.5" style="width:75px">
+    </div>
+    <div><label>Symbol</label>
+      <input type="text" id="accumulation-search" placeholder="e.g. RELIANCE" style="width:120px">
+    </div>
+    <button class="btn-scan"    onclick="loadScan('accumulation')">▶ Run Scan</button>
+    <button class="btn-refresh" onclick="refreshScan('accumulation')">🔄 Refresh</button>
+  </div>
+  <div class="stats" id="accumulation-stats">Click "Run Scan" to start.</div>
+  <div class="table-wrap">
+    <div id="accumulation-loading" class="loading" style="display:none">⏳ Scanning accumulation patterns...<span>First run takes 1–2 minutes</span></div>
+    <table id="accumulation-table" style="display:none">
+      <thead><tr>
+        <th onclick="sortTable('accumulation','Symbol')">Symbol ↕</th>
+        <th onclick="sortTable('accumulation','Exchange')">Exch ↕</th>
+        <th onclick="sortTable('accumulation','Price')">Price ↕</th>
+        <th onclick="sortTable('accumulation','Score')">Score ↕</th>
+        <th>Signals</th>
+        <th>Tight+Vol↑</th>
+        <th>Vol Spike</th>
+        <th>OBV↑</th>
+        <th>52W Low</th>
+        <th onclick="sortTable('accumulation','Vol Ratio')">Vol Ratio ↕</th>
+        <th onclick="sortTable('accumulation','Vol Today')">Vol Today ↕</th>
+      </tr></thead>
+      <tbody id="accumulation-body"></tbody>
+    </table>
+    <div id="accumulation-empty" class="no-results" style="display:none">No accumulation setups found.</div>
+  </div>
+</div>
+
 <script>
-  const TABS = ['pivot','darvas','trendline','breakout','insidebar'];
+  const TABS = ['pivot','darvas','trendline','breakout','insidebar','accumulation'];
 
   function switchTab(tab) {
     document.querySelectorAll('.tab').forEach((t, i) =>
@@ -599,19 +675,22 @@
   TABS.forEach(t => dataStore[t] = []);
 
   const endpoints = {
-    pivot:     { load: '/api/scan',        refresh: '/api/refresh' },
-    darvas:    { load: '/api/darvas',       refresh: '/api/darvas/refresh' },
-    trendline: { load: '/api/trendline',    refresh: '/api/trendline/refresh' },
-    breakout:  { load: '/api/breakout',     refresh: '/api/breakout/refresh' },
-    insidebar: { load: '/api/insidebar',    refresh: '/api/insidebar/refresh' }
+    pivot:        { load: '/api/scan',              refresh: '/api/refresh' },
+    darvas:       { load: '/api/darvas',             refresh: '/api/darvas/refresh' },
+    trendline:    { load: '/api/trendline',          refresh: '/api/trendline/refresh' },
+    breakout:     { load: '/api/breakout',           refresh: '/api/breakout/refresh' },
+    insidebar:    { load: '/api/insidebar',          refresh: '/api/insidebar/refresh' },
+    accumulation: { load: '/api/accumulation',       refresh: '/api/accumulation/refresh' },
   };
 
   function getExtraParams(scan) {
     const dirEl = document.getElementById(`${scan}-direction`);
     const dir   = dirEl ? `&direction=${dirEl.value}` : '';
     if (scan === 'insidebar') {
-      const n = document.getElementById('insidebar-n').value;
-      return `${dir}&n=${n}`;
+      return `${dir}&n=${document.getElementById('insidebar-n').value}`;
+    }
+    if (scan === 'accumulation') {
+      return `&min_score=${document.getElementById('accumulation-score').value}`;
     }
     return dir;
   }
@@ -650,7 +729,8 @@
 
   function volFilters(data, scan) {
     const minRatio = parseFloat(document.getElementById(`${scan}-volratio`).value) || 0;
-    const rising   = document.getElementById(`${scan}-volrising`).value === 'true';
+    const risingEl = document.getElementById(`${scan}-volrising`);
+    const rising   = risingEl ? risingEl.value === 'true' : false;
     return data.filter(r => {
       if (minRatio > 0 && (r['Vol Ratio'] == null || r['Vol Ratio'] < minRatio)) return false;
       if (rising   && r['Vol Rising'] !== '✅') return false;
@@ -718,13 +798,22 @@
       const cfOnly  = document.getElementById('insidebar-confluence').value === 'true';
       const search  = document.getElementById('insidebar-search').value.trim().toUpperCase();
       data = data.filter(r => {
-        if (trigger && r.Trigger !== trigger)                              return false;
-        if (tf      && !r.Timeframe.includes(tf))                         return false;
-        if ((r['Inside Bars'] || 0) < minBars)                            return false;
-        if (cfOnly  && (!r.Confluence || r.Confluence.length === 0))      return false;
-        if (search  && !r.Symbol.includes(search))                        return false;
+        if (trigger && r.Trigger !== trigger)                         return false;
+        if (tf      && !r.Timeframe.includes(tf))                    return false;
+        if ((r['Inside Bars'] || 0) < minBars)                       return false;
+        if (cfOnly  && (!r.Confluence || r.Confluence.length === 0)) return false;
+        if (search  && !r.Symbol.includes(search))                   return false;
         return true;
       });
+    }
+
+    if (scan === 'accumulation') {
+      const signal  = document.getElementById('accumulation-signal').value;
+      const search  = document.getElementById('accumulation-search').value.trim().toUpperCase();
+      data = data.filter(r =>
+        (!signal || (r.Signals && r.Signals.includes(signal))) &&
+        (!search || r.Symbol.includes(search))
+      );
     }
 
     data = volFilters(data, scan);
@@ -764,12 +853,14 @@
 
   function triggerBadge(trigger) {
     let cls = 'badge-breakout';
-    if      (trigger.includes('Fresh Breakout'))  cls = 'badge-fresh-bo';
-    else if (trigger.includes('Breakout'))        cls = 'badge-breakout';
-    else if (trigger.includes('Fresh Breakdown')) cls = 'badge-fresh-bd';
-    else if (trigger.includes('Distribution'))    cls = 'badge-dist';
-    else if (trigger.includes('Breakdown'))       cls = 'badge-short';
-    else if (trigger.includes('Retest'))          cls = 'badge-retest';
+    if      (trigger.includes('Gap Up'))          cls = 'badge-gap-up';
+    else if (trigger.includes('Gap Down'))         cls = 'badge-gap-down';
+    else if (trigger.includes('Fresh Breakout'))   cls = 'badge-fresh-bo';
+    else if (trigger.includes('Breakout'))         cls = 'badge-breakout';
+    else if (trigger.includes('Fresh Breakdown'))  cls = 'badge-fresh-bd';
+    else if (trigger.includes('Distribution'))     cls = 'badge-dist';
+    else if (trigger.includes('Breakdown'))        cls = 'badge-short';
+    else if (trigger.includes('Retest'))           cls = 'badge-retest';
     return `<span class="badge ${cls}">${trigger}</span>`;
   }
 
@@ -782,9 +873,9 @@
   function dirBadge(direction) {
     if (!direction) return '';
     let cls = 'badge-breakout';
-    if (direction.includes('Short'))    cls = 'badge-short';
-    if (direction.includes('Attempt'))  cls = 'badge-attempt';
-    if (direction.includes('Baby'))     cls = 'badge-baby';
+    if (direction.includes('Short'))   cls = 'badge-short';
+    if (direction.includes('Attempt')) cls = 'badge-attempt';
+    if (direction.includes('Baby'))    cls = 'badge-baby';
     return `<span class="badge ${cls}">${direction}</span>`;
   }
 
@@ -799,9 +890,14 @@
       const isShort   = r.Direction && r.Direction.includes('Short');
       const isAttempt = r.Direction && r.Direction.includes('Attempt');
       const isBaby    = r.Direction && r.Direction.includes('Baby');
-      if (isShort)   tr.classList.add('row-short');
-      if (isAttempt) tr.classList.add('row-attempt');
-      if (isBaby)    tr.classList.add('row-baby');
+      const isGapUp   = r.Trigger  && r.Trigger.includes('Gap Up');
+      const isGapDown = r.Trigger  && r.Trigger.includes('Gap Down');
+
+      if (isGapUp)        tr.classList.add('row-gap-up');
+      else if (isGapDown) tr.classList.add('row-gap-down');
+      else if (isShort)   tr.classList.add('row-short');
+      else if (isAttempt) tr.classList.add('row-attempt');
+      else if (isBaby)    tr.classList.add('row-baby');
 
       const exBadge = `<span class="badge ${r.Exchange==='NSE'?'badge-nse':'badge-bse'}">${r.Exchange}</span>`;
       const vRatio  = volCell(r);
@@ -829,11 +925,11 @@
       }
 
       if (scan === 'darvas') {
-        const trigCls   = r.Trigger==='Breakout'              ? 'badge-breakout'
-                        : r.Trigger==='Retest'                 ? 'badge-retest'
-                        : r.Trigger==='Distribution Breakdown' ? 'badge-dist'
-                        : r.Trigger==='Breakdown Retest'       ? 'badge-retest'
-                        : 'badge-short';
+        const trigCls = r.Trigger==='Breakout'               ? 'badge-breakout'
+                      : r.Trigger==='Retest'                  ? 'badge-retest'
+                      : r.Trigger==='Distribution Breakdown'  ? 'badge-dist'
+                      : r.Trigger==='Breakdown Retest'        ? 'badge-retest'
+                      : 'badge-short';
         tr.innerHTML = `
           <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
           <td>${dirBadge(r.Direction)}</td>
@@ -864,6 +960,9 @@
         const tfBadge   = `<span class="badge ${isShort?'badge-short':'badge-breakout'}">${r.Timeframe}</span>`;
         const bothBadge = r['Both TF'] && r['Both TF'].includes('⭐')
           ? `<span class="badge badge-both">⭐ Both TF</span>` : '';
+        const gapBadge  = r['Gap %'] !== '' && r['Gap %'] != null
+          ? `<span class="badge ${r['Gap %'] > 0 ? 'badge-gap-up' : 'badge-gap-down'}">${r['Gap %']}%</span>`
+          : '-';
         tr.innerHTML = `
           <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
           <td>${dirBadge(r.Direction)}</td>
@@ -873,6 +972,7 @@
           <td class="levels-cell">${r.Level}</td>
           <td>${r['Move %']}%</td>
           <td>${bothBadge}</td>
+          <td>${gapBadge}</td>
           <td>${vRatio}</td><td>${vRising}</td>
         `;
       }
@@ -900,6 +1000,28 @@
           <td>${cfBadge}</td>
           <td>${bothBadge}</td>
           <td>${vRatio}</td><td>${vRising}</td>
+        `;
+      }
+
+      if (scan === 'accumulation') {
+        const scoreCls  = r.Score >= 3 ? 'badge-fresh-bo'
+                        : r.Score == 2 ? 'badge-breakout' : 'badge-score-low';
+        const scoreBadge = `<span class="badge ${scoreCls}">⭐ ${r.Score}/4</span>`;
+        const sigBadges  = (r.Signals || '').split(' + ').filter(Boolean).map(s =>
+          `<span class="badge badge-confluence">${s}</span>`
+        ).join('');
+        tr.innerHTML = `
+          <td><b>${r.Symbol}</b></td>
+          <td>${exBadge}</td>
+          <td>₹${r.Price}</td>
+          <td>${scoreBadge}</td>
+          <td>${sigBadges}</td>
+          <td style="text-align:center">${r['Tight+Vol↑'] || ''}</td>
+          <td style="text-align:center">${r['Vol Spike']  || ''}</td>
+          <td style="text-align:center">${r['OBV↑']       || ''}</td>
+          <td style="text-align:center">${r['52W Low']     || ''}</td>
+          <td>${vRatio}</td>
+          <td class="vol-cell">${r['Vol Today'] ? Number(r['Vol Today']).toLocaleString() : '-'}</td>
         `;
       }
 
@@ -934,14 +1056,20 @@
   ['breakout-maxpct','breakout-search','breakout-volratio'].forEach(id =>
     document.getElementById(id).addEventListener('input', () => applyFilters('breakout')));
 
-  // Inside bar — N change triggers full reload, others just filter
   document.getElementById('insidebar-n').addEventListener('change', () => loadScan('insidebar'));
   ['insidebar-trigger','insidebar-tf','insidebar-confluence','insidebar-volrising'].forEach(id =>
     document.getElementById(id).addEventListener('change', () => applyFilters('insidebar')));
   ['insidebar-minbars','insidebar-search','insidebar-volratio'].forEach(id =>
     document.getElementById(id).addEventListener('input', () => applyFilters('insidebar')));
 
-  // ── LTP REFRESH ──
+  document.getElementById('accumulation-score').addEventListener('change',
+    () => loadScan('accumulation'));
+  ['accumulation-signal'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => applyFilters('accumulation')));
+  ['accumulation-volratio','accumulation-search'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => applyFilters('accumulation')));
+
+  // ── LTP ──
   async function checkMarketStatus() {
     try {
       const res      = await fetch('/api/market_status');
