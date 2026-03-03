@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Screener</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; }
+
+  header {
+    background: #1a1d2e;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #2a2d3e;
+  }
+  header h1 { font-size: 1.3rem; color: #7c83fd; letter-spacing: 1px; }
+
+  .tabs {
+    display: flex;
+    background: #13151f;
+    border-bottom: 2px solid #2a2d3e;
+    padding: 0 24px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    padding: 12px 24px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+  }
+  .tab:hover { color: #aaa; }
+  .tab.active { color: #7c83fd; border-bottom-color: #7c83fd; font-weight: 600; }
+
+  .controls {
+    padding: 14px 24px;
+    background: #13151f;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    border-bottom: 1px solid #2a2d3e;
+  }
+  .controls label { font-size: 0.82rem; color: #aaa; margin-right: 4px; }
+
+  select, input[type=text] {
+    background: #1e2130;
+    border: 1px solid #2a2d3e;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .fo-toggle {
+    background: #1e2130;
+    border: 1px solid #7c83fd44;
+    color: #7c83fd;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .vol-toggle {
+    background: #1e2130;
+    border: 1px solid #ffaa4444;
+    color: #ffaa44;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .n-select {
+    background: #1e2130;
+    border: 1px solid #44aaff44;
+    color: #44aaff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  button {
+    padding: 7px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: opacity 0.2s;
+  }
+  button:hover { opacity: 0.85; }
+  .btn-scan    { background: #7c83fd; color: #fff; }
+  .btn-refresh { background: #2a2d3e; color: #aaa; }
+
+  .stats { padding: 10px 24px; font-size: 0.82rem; color: #666; }
+  .stats span { color: #7c83fd; font-weight: 600; }
+
+  .table-wrap { padding: 0 24px 40px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.83rem; }
+  thead tr { background: #1a1d2e; color: #7c83fd; text-align: left; }
+  thead th {
+    padding: 10px 12px; cursor: pointer; user-select: none;
+    white-space: nowrap; border-bottom: 2px solid #2a2d3e;
+  }
+  thead th:hover { background: #22263a; }
+  tbody tr { border-bottom: 1px solid #1e2130; transition: background 0.15s; }
+  tbody tr:hover { background: #1a1d2e; }
+  tbody td { padding: 9px 12px; white-space: nowrap; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 0.75rem; font-weight: 600; margin: 1px;
+  }
+  .badge-cpr        { background: #2a3d6e; color: #7eb8f7; }
+  .badge-pivot      { background: #2d3a28; color: #7ed07e; }
+  .badge-narrow     { background: #4a2a00; color: #ffaa44; }
+  .badge-inside     { background: #3a2060; color: #cc88ff; }
+  .badge-nse        { background: #1a3a2a; color: #44cc88; }
+  .badge-bse        { background: #3a1a1a; color: #cc4444; }
+  .badge-breakout   { background: #1a3a1a; color: #44ff88; }
+  .badge-fresh-bo   { background: #0a4a1a; color: #00ff88; }
+  .badge-retest     { background: #3a3a1a; color: #ffee44; }
+  .badge-short      { background: #3a1a1a; color: #ff4444; }
+  .badge-fresh-bd   { background: #4a0a0a; color: #ff2222; }
+  .badge-dist       { background: #4a1a2a; color: #ff66aa; }
+  .badge-horiz      { background: #1a2a3a; color: #44aaff; }
+  .badge-trendline  { background: #2a1a3a; color: #cc88ff; }
+  .badge-both       { background: #3a2a00; color: #ffcc44; }
+  .badge-accum      { background: #1a3a2a; color: #44cc88; }
+  .badge-confluence { background: #2a2a00; color: #ffdd44; }
+  .badge-baby       { background: #2a2a1a; color: #ffcc44; }
+  .badge-attempt    { background: #2a1a00; color: #ffaa44; }
+
+  .levels-cell { font-size: 0.75rem; color: #888; line-height: 1.6; }
+  .levels-cell b { color: #aaa; }
+  .vol-cell { font-size: 0.75rem; color: #888; }
+  .vol-high { color: #ffaa44; font-weight: 600; }
+
+  .loading { text-align: center; padding: 60px; color: #555; font-size: 1rem; }
+  .loading span { display: block; margin-top: 8px; font-size: 0.8rem; }
+  .no-results { text-align: center; padding: 60px; color: #555; }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  tr.row-short   { background: #1e1212; }
+  tr.row-short:hover   { background: #2a1616; }
+  tr.row-attempt { background: #1e1a10; }
+  tr.row-attempt:hover { background: #2a2414; }
+  tr.row-baby    { background: #1a1a1a; }
+  tr.row-baby:hover    { background: #222222; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Stock Screener — NSE &amp; BSE</h1>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <span id="market-status" style="font-size:0.8rem; color:#666;"></span>
+    <button id="btn-ltp" onclick="refreshLTP()"
+      style="padding:6px 14px; border-radius:6px; border:none; cursor:pointer;
+             font-size:0.82rem; font-weight:600; background:#2a2d3e; color:#555;"
+      disabled>🔄 LTP</button>
+    <span id="last-updated" style="font-size:0.8rem; color:#666;">Not loaded yet</span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('pivot')">🎯 Pivot Confluence</div>
+  <div class="tab"        onclick="switchTab('darvas')">📦 Darvas Box</div>
+  <div class="tab"        onclick="switchTab('trendline')">📈 Trendline / Support</div>
+  <div class="tab"        onclick="switchTab('breakout')">🚀 Breakout / Breakdown</div>
+  <div class="tab"        onclick="switchTab('insidebar')">🕯️ Inside Bar</div>
+</div>
+
+<!-- ════════════════ PIVOT ════════════════ -->
+<div id="section-pivot" class="section active">
+  <div class="controls">
+    <div><label>Exchange</label>
+      <select id="pivot-exchange">
+        <option value="BOTH">NSE + BSE</option>
+        <option value="NSE">NSE Only</option>
+        <option value="BSE">BSE Only</option>
+      </select>
+    </div>
+    <div><label>Universe</label>
+      <select id="pivot-fo" class="fo-toggle">
+        <option value="false">All Stocks</option>
+        <option value="true">F&amp;O Only</option>
+      </select>
+    </div>
+    <div><label>Setup</label>
+      <select id="pivot-setup">
+        <option value="">All</option>
+        <option value="Inside CPR">Inside CPR</option>
+        <option value="Near CPR Edge">Near CPR Edge</option>
+        <option value="Near Pivot">Near Pivot</option>
+        <option value="Narrow CPR">Narrow CPR 🔥</option>
+      </select>
+    </div>
+    <div><label>Weekly Hit</label>
+      <select id="pivot-weekly">
+        <option value="">Any</option>
+        <option value="Inside CPR">Inside CPR</option>
+        <option value="Near TC">Near TC</option>
+        <option value="Near BC">Near BC</option>
+        <option value="Near Pivot">Near Pivot</option>
+      </select>
+    </div>
+    <div><label>Monthly Hit</label>
+      <select id="pivot-monthly">
+        <option value="">Any</option>
+        <option value="Inside CPR">Inside CPR</option>
+        <option value="Near TC">Near TC</option>
+        <option value="Near BC">Near BC</option>
+        <option value="Near Pivot">Near Pivot</option>
+      </select>
+    </div>
+    <div><label>Min Vol Ratio</label>
+      <input type="text" id="pivot-volratio" placeholder="e.g. 1.5" style="width:75px">
+    </div>
+    <div><label>Vol Rising</label>
+      <select id="pivot-volrising" class="vol-toggle">
+        <option value="false">Any</option>
+        <option value="true">Rising Only ✅</option>
+      </select>
+    </div>
+    <div><label>Symbol</label>
+      <input type="text" id="pivot-search" placeholder="e.g. RELIANCE" style="width:120px">
+    </div>
+    <button class="btn-scan"    onclick="loadScan('pivot')">▶ Run Scan</button>
+    <button class="btn-refresh" onclick="refreshScan('pivot')">🔄 Refresh</button>
+  </div>
+  <div class="stats" id="pivot-stats">Click "Run Scan" to start.</div>
+  <div class="table-wrap">
+    <div id="pivot-loading" class="loading" style="display:none">⏳ Scanning pivots...<span>30–60 seconds on first load</span></div>
+    <table id="pivot-table" style="display:none">
+      <thead><tr>
+        <th onclick="sortTable('pivot','Symbol')">Symbol ↕</th>
+        <th onclick="sortTable('pivot','Exchange')">Exch ↕</th>
+        <th onclick="sortTable('pivot','Price')">Price ↕</th>
+        <th>Setup</th>
+        <th>Weekly Hit</th>
+        <th>Monthly Hit</th>
+        <th>Narrow CPR</th>
+        <th>Weekly Levels</th>
+        <th>Monthly Levels</th>
+        <th onclick="sortTable('pivot','Vol Ratio')">Vol Ratio ↕</th>
+        <th>Vol Rising</th>
+      </tr></thead>
+      <tbody id="pivot-body"></tbody>
+    </table>
+    <div id="pivot-empty" class="no-results" style="display:none">No stocks matched.</div>
+  </div>
+</div>
+
+<!-- ════════════════ DARVAS ════════════════ -->
+<div id="section-darvas" class="section">
+  <div class="controls">
+    <div><label>Exchange</label>
+      <select id="darvas-exchange">
+        <option value="BOTH">NSE + BSE</option>
+        <option value="NSE">NSE Only</option>
+        <option value="BSE">BSE Only</option>
+      </select>
+    </div>
+    <div><label>Universe</label>
+      <select id="darvas-fo" class="fo-toggle">
+        <option value="false">All Stocks</option>
+        <option value="true">F&amp;O Only</option>
+      </select>
+    </div>
+    <div><label>Direction</label>
+      <select id="darvas-direction">
+        <option value="BOTH">Long + Short</option>
+        <option value="LONG">🟢 Long Only</option>
+        <option value="SHORT">🔴 Short Only</option>
+      </select>
+    </div>
+    <div><label>Box Type</label>
+      <select id="darvas-boxtype">
+        <option value="">All</option>
+        <option value="Accumulation">Accumulation</option>
+        <option value="Distribution">Distribution</option>
+      </select>
+    </div>
+    <div><label>Trigger</label>
+      <select id="darvas-trigger">
+        <option value="">All</option>
+        <option value="Breakout">Breakout</option>
+        <option value="Retest">Retest</option>
+        <option value="Box Breakdown">Box Breakdown</option>
+        <option value="Distribution Breakdown">Distribution Breakdown</option>
+        <option value="Breakdown Retest">Breakdown Retest</option>
+      </select>
+    </div>
+    <div><label>Max Box Width %</label>
+      <input type="text" id="darvas-width" placeholder="e.g. 10" style="width:80px">
+    </div>
+    <div><label>Min Box Weeks</label>
+      <input type="text" id="darvas-weeks" placeholder="e.g. 3" style="width:80px">
+    </div>
+    <div><label>Min Vol Ratio</label>
+      <input type="text" id="darvas-volratio" placeholder="e.g. 1.5" style="width:75px">
+    </div>
+    <div><label>Vol Rising</label>
+      <select id="darvas-volrising" class="vol-toggle">
+        <option value="false">Any</option>
+        <option value="true">Rising Only ✅</option>
+      </select>
+    </div>
+    <div><label>Symbol</label>
+      <input type="text" id="darvas-search" placeholder="e.g. INFY" style="width:120px">
+    </div>
+    <button class="btn-scan"    onclick="loadScan('darvas')">▶ Run Scan</button>
+    <button class="btn-refresh" onclick="refreshScan('darvas')">🔄 Refresh</button>
+  </div>
+  <div class="stats" id="darvas-stats">Click "Run Scan" to start.</div>
+  <div class="table-wrap">
+    <div id="darvas-loading" class="loading" style="display:none">⏳ Scanning Darvas boxes...<span>First run takes 5–10 minutes</span></div>
+    <table id="darvas-table" style="display:none">
+      <thead><tr>
+        <th onclick="sortTable('darvas','Symbol')">Symbol ↕</th>
+        <th onclick="sortTable('darvas','Exchange')">Exch ↕</th>
+        <th onclick="sortTable('darvas','Direction')">Direction ↕</th>
+        <th onclick="sortTable('darvas','Box Type')">Box Type ↕</th>
+        <th onclick="sortTable('darvas','Price')">Price ↕</th>
+        <th onclick="sortTable('darvas','Trigger')">Trigger ↕</th>
+        <th onclick="sortTable('darvas','Box Top')">Box Top ↕</th>
+        <th onclick="sortTable('darvas','Box Bottom')">Box Bottom ↕</th>
+        <th onclick="sortTable('darvas','Box Width %')">Width % ↕</th>
+        <th onclick="sortTable('darvas','Box Weeks')">Weeks ↕</th>
+        <th>Box Period</th>
+        <th onclick="sortTable('darvas','Vol Ratio')">Vol Ratio ↕</th>
+        <th>Vol Rising</th>
+      </tr></thead>
+      <tbody id="darvas-body"></tbody>
+    </table>
+    <div id="darvas-empty" class="no-results" style="display:none">No Darvas setups found.</div>
+  </div>
+</div>
+
+<!-- ════════════════ TRENDLINE ════════════════ -->
+<div id="section-trendline" class="section">
+  <div class="controls">
+    <div><label>Exchange</label>
+      <select id="trendline-exchange">
+        <option value="BOTH">NSE + BSE</option>
+        <option value="NSE">NSE Only</option>
+        <option value="BSE">BSE Only</option>
+      </select>
+    </div>
+    <div><label>Universe</label>
+      <select id="trendline-fo" class="fo-toggle">
+        <option value="false">All Stocks</option>
+        <option value="true">F&amp;O Only</option>
+      </select>
+    </div>
+    <div><label>Setup Type</label>
+      <select id="trendline-type">
+        <option value="">All</option>
+        <option value="Horizontal">Horizontal Support</option>
+        <option value="Rising">Rising Trendline</option>
+        <option value="Daily">Daily Only</option>
+        <option value="Weekly">Weekly Only</option>
+      </select>
+    </div>
+    <div><label>Min Vol Ratio</label>
+      <input type="text" id="trendline-volratio" placeholder="e.g. 1.5" style="width:75px">
+    </div>
+    <div><label>Vol Rising</label>
+      <select id="trendline-volrising" class="vol-toggle">
+        <option value="false">Any</option>
+        <option value="true">Rising Only ✅</option>
+      </select>
+    </div>
+    <div><label>Symbol</label>
+      <input type="text" id="trendline-search" placeholder="e.g. HDFCBANK" style="width:120px">
+    </div>
+    <button class="btn-scan"    onclick="loadScan('trendline')">▶ Run Scan</button>
+    <button class="btn-refresh" onclick="refreshScan('trendline')">🔄 Refresh</button>
+  </div>
+  <div class="stats" id="trendline-stats">Click "Run Scan" to start.</div>
+  <div class="table-wrap">
+    <div id="trendline-loading" class="loading" style="display:none">⏳ Scanning trendlines...<span>First run takes 10–15 minutes</span></div>
+    <table id="trendline-table" style="display:none">
+      <thead><tr>
+        <th onclick="sortTable('trendline','Symbol')">Symbol ↕</th>
+        <th onclick="sortTable('trendline','Exchange')">Exch ↕</th>
+        <th onclick="sortTable('trendline','Price')">Price ↕</th>
+        <th onclick="sortTable('trendline','Setup')">Setup ↕</th>
+        <th onclick="sortTable('trendline','Level')">Level ↕</th>
+        <th>Detail</th>
+        <th>All Setups</th>
+        <th onclick="sortTable('trendline','Vol Ratio')">Vol Ratio ↕</th>
+        <th>Vol Rising</th>
+      </tr></thead>
+      <tbody id="trendline-body"></tbody>
+    </table>
+    <div id="trendline-empty" class="no-results" style="display:none">No trendline/support setups found.</div>
+  </div>
+</div>
+
+<!-- ════════════════ BREAKOUT ════════════════ -->
+<div id="section-breakout" class="section">
+  <div class="controls">
+    <div><label>Exchange</label>
+      <select id="breakout-exchange">
+        <option value="BOTH">NSE + BSE</option>
+        <option value="NSE">NSE Only</option>
+        <option value="BSE">BSE Only</option>
+      </select>
+    </div>
+    <div><label>Universe</label>
+      <select id="breakout-fo" class="fo-toggle">
+        <option value="false">All Stocks</option>
+        <option value="true">F&amp;O Only</option>
+      </select>
+    </div>
+    <div><label>Direction</label>
+      <select id="breakout-direction">
+        <option value="BOTH">Long + Short</option>
+        <option value="LONG">🟢 Long Only</option>
+        <option value="SHORT">🔴 Short Only</option>
+      </select>
+    </div>
+    <div><label>Trigger Type</label>
+      <select id="breakout-trigger">
+        <option value="">All</option>
+        <option value="Fresh Breakout">Fresh Breakout</option>
+        <option value="Breakout">Breakout</option>
+        <option value="Fresh Breakdown">Fresh Breakdown</option>
+        <option value="Breakdown">Breakdown</option>
+      </select>
+    </div>
+    <div><label>Timeframe</label>
+      <select id="breakout-tf">
+        <option value="">All</option>
+        <option value="Daily + Weekly">Both TF ⭐</option>
+        <option value="Daily">Daily Only</option>
+        <option value="Weekly">Weekly Only</option>
+      </select>
+    </div>
+    <div><label>Min Vol Ratio</label>
+      <input type="text" id="breakout-volratio" placeholder="e.g. 1.5" style="width:75px">
+    </div>
+    <div><label>Vol Rising</label>
+      <select id="breakout-volrising" class="vol-toggle">
+        <option value="false">Any</option>
+        <option value="true">Rising Only ✅</option>
+      </select>
+    </div>
+    <div><label>Max Move %</label>
+      <input type="text" id="breakout-maxpct" placeholder="e.g. 5" style="width:75px">
+    </div>
+    <div><label>Symbol</label>
+      <input type="text" id="breakout-search" placeholder="e.g. HDFCBANK" style="width:120px">
+    </div>
+    <button class="btn-scan"    onclick="loadScan('breakout')">▶ Run Scan</button>
+    <button class="btn-refresh" onclick="refreshScan('breakout')">🔄 Refresh</button>
+  </div>
+  <div class="stats" id="breakout-stats">Click "Run Scan" to start.</div>
+  <div class="table-wrap">
+    <div id="breakout-loading" class="loading" style="display:none">⏳ Scanning breakouts/breakdowns...<span>First run takes 5–10 minutes</span></div>
+    <table id="breakout-table" style="display:none">
+      <thead><tr>
+        <th onclick="sortTable('breakout','Symbol')">Symbol ↕</th>
+        <th onclick="sortTable('breakout','Exchange')">Exch ↕</th>
+        <th onclick="sortTable('breakout','Direction')">Direction ↕</th>
+        <th onclick="sortTable('breakout','Price')">Price ↕</th>
+        <th onclick="sortTable('breakout','Trigger')">Trigger ↕</th>
+        <th onclick="sortTable('breakout','Timeframe')">Timeframe ↕</th>
+        <th>Level</th>
+        <th onclick="sortTable('breakout','Move %')">Move % ↕</th>
+        <th>Both TF</th>
+        <th onclick="sortTable('breakout','Vol Ratio')">Vol Ratio ↕</th>
+        <th>Vol Rising</th>
+      </tr></thead>
+      <tbody id="breakout-body"></tbody>
+    </table>
+    <div id="breakout-empty" class="no-results" style="display:none">No breakout/breakdown setups found.</div>
+  </div>
+</div>
+
+<!-- ════════════════ INSIDE BAR ════════════════ -->
+<div id="section-insidebar" class="section">
+  <div class="controls">
+    <div><label>Exchange</label>
+      <select id="insidebar-exchange">
+        <option value="BOTH">NSE + BSE</option>
+        <option value="NSE">NSE Only</option>
+        <option value="BSE">BSE Only</option>
+      </select>
+    </div>
+    <div><label>Universe</label>
+      <select id="insidebar-fo" class="fo-toggle">
+        <option value="false">All Stocks</option>
+        <option value="true">F&amp;O Only</option>
+      </select>
+    </div>
+    <div><label>Lookback (N)</label>
+      <select id="insidebar-n" class="n-select">
+        <option value="2">2 bars</option>
+        <option value="3">3 bars</option>
+        <option value="4">4 bars</option>
+        <option value="5">5 bars</option>
+      </select>
+    </div>
+    <div><label>Trigger</label>
+      <select id="insidebar-trigger">
+        <option value="">All</option>
+        <option value="Breakout">🟢 Breakout</option>
+        <option value="Breakdown">🔴 Breakdown</option>
+        <option value="Attempt">⚡ Attempt</option>
+        <option value="Baby">🟡 Baby</option>
+      </select>
+    </div>
+    <div><label>Timeframe</label>
+      <select id="insidebar-tf">
+        <option value="">All</option>
+        <option value="Daily">Daily</option>
+        <option value="Weekly">Weekly</option>
+        <option value="Daily + Weekly">Both TF ⭐</option>
+      </select>
+    </div>
+    <div><label>Min Inside Bars</label>
+      <input type="text" id="insidebar-minbars" placeholder="e.g. 2" style="width:70px">
+    </div>
+    <div><label>Confluence</label>
+      <select id="insidebar-confluence" class="fo-toggle">
+        <option value="false">All</option>
+        <option value="true">Confluence Only ⭐</option>
+      </select>
+    </div>
+    <div><label>Min Vol Ratio</label>
+      <input type="text" id="insidebar-volratio" placeholder="e.g. 1.5" style="width:75px">
+    </div>
+    <div><label>Vol Rising</label>
+      <select id="insidebar-volrising" class="vol-toggle">
+        <option value="false">Any</option>
+        <option value="true">Rising Only ✅</option>
+      </select>
+    </div>
+    <div><label>Symbol</label>
+      <input type="text" id="insidebar-search" placeholder="e.g. RELIANCE" style="width:120px">
+    </div>
+    <button class="btn-scan"    onclick="loadScan('insidebar')">▶ Run Scan</button>
+    <button class="btn-refresh" onclick="refreshScan('insidebar')">🔄 Refresh</button>
+  </div>
+  <div class="stats" id="insidebar-stats">Click "Run Scan" to start.</div>
+  <div class="table-wrap">
+    <div id="insidebar-loading" class="loading" style="display:none">⏳ Scanning inside bars...<span>First run takes 1–2 minutes</span></div>
+    <table id="insidebar-table" style="display:none">
+      <thead><tr>
+        <th onclick="sortTable('insidebar','Symbol')">Symbol ↕</th>
+        <th onclick="sortTable('insidebar','Exchange')">Exch ↕</th>
+        <th onclick="sortTable('insidebar','Direction')">Direction ↕</th>
+        <th onclick="sortTable('insidebar','Price')">Price ↕</th>
+        <th onclick="sortTable('insidebar','Timeframe')">Timeframe ↕</th>
+        <th onclick="sortTable('insidebar','Trigger')">Trigger ↕</th>
+        <th onclick="sortTable('insidebar','Mother Date')">Mother Date ↕</th>
+        <th onclick="sortTable('insidebar','Mother High')">Mother High ↕</th>
+        <th onclick="sortTable('insidebar','Mother Low')">Mother Low ↕</th>
+        <th onclick="sortTable('insidebar','Inside Bars')">Inside Bars ↕</th>
+        <th onclick="sortTable('insidebar','Confluence')">Confluence ↕</th>
+        <th>Both TF</th>
+        <th onclick="sortTable('insidebar','Vol Ratio')">Vol Ratio ↕</th>
+        <th>Vol Rising</th>
+      </tr></thead>
+      <tbody id="insidebar-body"></tbody>
+    </table>
+    <div id="insidebar-empty" class="no-results" style="display:none">No inside bar setups found.</div>
+  </div>
+</div>
+
+<script>
+  const TABS = ['pivot','darvas','trendline','breakout','insidebar'];
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach((t, i) =>
+      t.classList.toggle('active', TABS[i] === tab));
+    TABS.forEach(t =>
+      document.getElementById(`section-${t}`).classList.toggle('active', t === tab));
+  }
+
+  const sortState = {};
+  TABS.forEach(t => sortState[t] = { col: '', asc: true });
+
+  function sortTable(scan, col) {
+    const s = sortState[scan];
+    s.asc = s.col === col ? !s.asc : true;
+    s.col = col;
+    applyFilters(scan);
+  }
+
+  const dataStore = {};
+  TABS.forEach(t => dataStore[t] = []);
+
+  const endpoints = {
+    pivot:     { load: '/api/scan',        refresh: '/api/refresh' },
+    darvas:    { load: '/api/darvas',       refresh: '/api/darvas/refresh' },
+    trendline: { load: '/api/trendline',    refresh: '/api/trendline/refresh' },
+    breakout:  { load: '/api/breakout',     refresh: '/api/breakout/refresh' },
+    insidebar: { load: '/api/insidebar',    refresh: '/api/insidebar/refresh' }
+  };
+
+  function getExtraParams(scan) {
+    const dirEl = document.getElementById(`${scan}-direction`);
+    const dir   = dirEl ? `&direction=${dirEl.value}` : '';
+    if (scan === 'insidebar') {
+      const n = document.getElementById('insidebar-n').value;
+      return `${dir}&n=${n}`;
+    }
+    return dir;
+  }
+
+  async function loadScan(scan) {
+    const exchange = document.getElementById(`${scan}-exchange`).value;
+    const fo_only  = document.getElementById(`${scan}-fo`).value;
+    const extra    = getExtraParams(scan);
+    showState(scan, 'loading');
+    try {
+      const res  = await fetch(`${endpoints[scan].load}?exchange=${exchange}&fo_only=${fo_only}${extra}`);
+      const json = await res.json();
+      dataStore[scan] = json.data || [];
+      document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+      applyFilters(scan);
+    } catch(e) {
+      document.getElementById(`${scan}-stats`).textContent = 'Error loading data.';
+      showState(scan, 'empty');
+    }
+  }
+
+  async function refreshScan(scan) {
+    const exchange = document.getElementById(`${scan}-exchange`).value;
+    const fo_only  = document.getElementById(`${scan}-fo`).value;
+    const extra    = getExtraParams(scan);
+    showState(scan, 'loading');
+    try {
+      const res  = await fetch(`${endpoints[scan].refresh}?exchange=${exchange}&fo_only=${fo_only}${extra}`);
+      const json = await res.json();
+      dataStore[scan] = json.data || [];
+      applyFilters(scan);
+    } catch(e) {
+      showState(scan, 'empty');
+    }
+  }
+
+  function volFilters(data, scan) {
+    const minRatio = parseFloat(document.getElementById(`${scan}-volratio`).value) || 0;
+    const rising   = document.getElementById(`${scan}-volrising`).value === 'true';
+    return data.filter(r => {
+      if (minRatio > 0 && (r['Vol Ratio'] == null || r['Vol Ratio'] < minRatio)) return false;
+      if (rising   && r['Vol Rising'] !== '✅') return false;
+      return true;
+    });
+  }
+
+  function applyFilters(scan) {
+    let data = [...dataStore[scan]];
+
+    if (scan === 'pivot') {
+      const setup   = document.getElementById('pivot-setup').value.toLowerCase();
+      const weekly  = document.getElementById('pivot-weekly').value.toLowerCase();
+      const monthly = document.getElementById('pivot-monthly').value.toLowerCase();
+      const search  = document.getElementById('pivot-search').value.trim().toUpperCase();
+      data = data.filter(r =>
+        (!setup   || r.Setup.toLowerCase().includes(setup)) &&
+        (!weekly  || r['Weekly Hit'].toLowerCase().includes(weekly)) &&
+        (!monthly || r['Monthly Hit'].toLowerCase().includes(monthly)) &&
+        (!search  || r.Symbol.includes(search))
+      );
+    }
+
+    if (scan === 'darvas') {
+      const trigger = document.getElementById('darvas-trigger').value;
+      const boxtype = document.getElementById('darvas-boxtype').value;
+      const maxW    = parseFloat(document.getElementById('darvas-width').value) || Infinity;
+      const minWks  = parseInt(document.getElementById('darvas-weeks').value)   || 0;
+      const search  = document.getElementById('darvas-search').value.trim().toUpperCase();
+      data = data.filter(r =>
+        (!trigger || r.Trigger === trigger) &&
+        (!boxtype || (r['Box Type'] && r['Box Type'].includes(boxtype))) &&
+        r['Box Width %'] <= maxW &&
+        r['Box Weeks'] >= minWks &&
+        (!search || r.Symbol.includes(search))
+      );
+    }
+
+    if (scan === 'trendline') {
+      const type   = document.getElementById('trendline-type').value;
+      const search = document.getElementById('trendline-search').value.trim().toUpperCase();
+      data = data.filter(r =>
+        (!type   || r.Setup.includes(type)) &&
+        (!search || r.Symbol.includes(search))
+      );
+    }
+
+    if (scan === 'breakout') {
+      const trigType = document.getElementById('breakout-trigger').value;
+      const tf       = document.getElementById('breakout-tf').value;
+      const maxPct   = parseFloat(document.getElementById('breakout-maxpct').value) || Infinity;
+      const search   = document.getElementById('breakout-search').value.trim().toUpperCase();
+      data = data.filter(r =>
+        (!trigType || r.Trigger.includes(trigType)) &&
+        (!tf       || r.Timeframe === tf) &&
+        r['Move %'] <= maxPct &&
+        (!search   || r.Symbol.includes(search))
+      );
+    }
+
+    if (scan === 'insidebar') {
+      const trigger = document.getElementById('insidebar-trigger').value;
+      const tf      = document.getElementById('insidebar-tf').value;
+      const minBars = parseInt(document.getElementById('insidebar-minbars').value) || 0;
+      const cfOnly  = document.getElementById('insidebar-confluence').value === 'true';
+      const search  = document.getElementById('insidebar-search').value.trim().toUpperCase();
+      data = data.filter(r => {
+        if (trigger && r.Trigger !== trigger)                              return false;
+        if (tf      && !r.Timeframe.includes(tf))                         return false;
+        if ((r['Inside Bars'] || 0) < minBars)                            return false;
+        if (cfOnly  && (!r.Confluence || r.Confluence.length === 0))      return false;
+        if (search  && !r.Symbol.includes(search))                        return false;
+        return true;
+      });
+    }
+
+    data = volFilters(data, scan);
+
+    const s = sortState[scan];
+    if (s.col) {
+      data.sort((a, b) => {
+        let av = a[s.col], bv = b[s.col];
+        if (typeof av === 'number') return s.asc ? av - bv : bv - av;
+        return s.asc
+          ? String(av).localeCompare(String(bv))
+          : String(bv).localeCompare(String(av));
+      });
+    }
+
+    renderTable(scan, data);
+    document.getElementById(`${scan}-stats`).innerHTML =
+      `Showing <span>${data.length}</span> of <span>${dataStore[scan].length}</span> stocks`;
+  }
+
+  function volCell(r) {
+    const ratio    = r['Vol Ratio'];
+    const ratioStr = ratio != null ? ratio.toFixed(2) + 'x' : '-';
+    const cls      = ratio != null && ratio >= 2 ? 'vol-high' : '';
+    return `<span class="vol-cell ${cls}">${ratioStr}</span>`;
+  }
+
+  function ibTriggerBadge(trigger) {
+    const map = {
+      'Breakout':  'badge-fresh-bo',
+      'Breakdown': 'badge-fresh-bd',
+      'Attempt':   'badge-attempt',
+      'Baby':      'badge-baby',
+    };
+    return `<span class="badge ${map[trigger] || 'badge-baby'}">${trigger}</span>`;
+  }
+
+  function triggerBadge(trigger) {
+    let cls = 'badge-breakout';
+    if      (trigger.includes('Fresh Breakout'))  cls = 'badge-fresh-bo';
+    else if (trigger.includes('Breakout'))        cls = 'badge-breakout';
+    else if (trigger.includes('Fresh Breakdown')) cls = 'badge-fresh-bd';
+    else if (trigger.includes('Distribution'))    cls = 'badge-dist';
+    else if (trigger.includes('Breakdown'))       cls = 'badge-short';
+    else if (trigger.includes('Retest'))          cls = 'badge-retest';
+    return `<span class="badge ${cls}">${trigger}</span>`;
+  }
+
+  function boxTypeBadge(boxType) {
+    if (!boxType) return '';
+    const cls = boxType.includes('Accum') ? 'badge-accum' : 'badge-dist';
+    return `<span class="badge ${cls}">${boxType}</span>`;
+  }
+
+  function dirBadge(direction) {
+    if (!direction) return '';
+    let cls = 'badge-breakout';
+    if (direction.includes('Short'))    cls = 'badge-short';
+    if (direction.includes('Attempt'))  cls = 'badge-attempt';
+    if (direction.includes('Baby'))     cls = 'badge-baby';
+    return `<span class="badge ${cls}">${direction}</span>`;
+  }
+
+  function renderTable(scan, data) {
+    const tbody = document.getElementById(`${scan}-body`);
+    tbody.innerHTML = '';
+    if (!data.length) { showState(scan, 'empty'); return; }
+    showState(scan, 'table');
+
+    data.forEach(r => {
+      const tr        = document.createElement('tr');
+      const isShort   = r.Direction && r.Direction.includes('Short');
+      const isAttempt = r.Direction && r.Direction.includes('Attempt');
+      const isBaby    = r.Direction && r.Direction.includes('Baby');
+      if (isShort)   tr.classList.add('row-short');
+      if (isAttempt) tr.classList.add('row-attempt');
+      if (isBaby)    tr.classList.add('row-baby');
+
+      const exBadge = `<span class="badge ${r.Exchange==='NSE'?'badge-nse':'badge-bse'}">${r.Exchange}</span>`;
+      const vRatio  = volCell(r);
+      const vRising = r['Vol Rising'] || '';
+
+      if (scan === 'pivot') {
+        const setupBadges = r.Setup.split('|').map(s => s.trim()).filter(Boolean).map(s => {
+          let cls = 'badge-cpr';
+          if (s.includes('Inside CPR'))  cls = 'badge-inside';
+          else if (s.includes('Pivot'))  cls = 'badge-pivot';
+          else if (s.includes('Narrow')) cls = 'badge-narrow';
+          return `<span class="badge ${cls}">${s}</span>`;
+        }).join('');
+        const narrowW = r['Narrow CPR (W)'] ? '✅ W' : '';
+        const narrowM = r['Narrow CPR (M)'] ? '✅ M' : '';
+        tr.innerHTML = `
+          <td><b>${r.Symbol}</b></td><td>${exBadge}</td><td>₹${r.Price}</td>
+          <td>${setupBadges}</td>
+          <td>${r['Weekly Hit']}</td><td>${r['Monthly Hit']}</td>
+          <td>${[narrowW,narrowM].filter(Boolean).join(' ')}</td>
+          <td class="levels-cell"><b>P:</b>${r.W_P} <b>TC:</b>${r.W_TC} <b>BC:</b>${r.W_BC}<br><b>Width:</b>${r['W_CPR_Width%']}%</td>
+          <td class="levels-cell"><b>P:</b>${r.M_P} <b>TC:</b>${r.M_TC} <b>BC:</b>${r.M_BC}<br><b>Width:</b>${r['M_CPR_Width%']}%</td>
+          <td>${vRatio}</td><td>${vRising}</td>
+        `;
+      }
+
+      if (scan === 'darvas') {
+        const trigCls   = r.Trigger==='Breakout'              ? 'badge-breakout'
+                        : r.Trigger==='Retest'                 ? 'badge-retest'
+                        : r.Trigger==='Distribution Breakdown' ? 'badge-dist'
+                        : r.Trigger==='Breakdown Retest'       ? 'badge-retest'
+                        : 'badge-short';
+        tr.innerHTML = `
+          <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
+          <td>${dirBadge(r.Direction)}</td>
+          <td>${boxTypeBadge(r['Box Type'])}</td>
+          <td>₹${r.Price}</td>
+          <td><span class="badge ${trigCls}">${r.Trigger}</span></td>
+          <td>₹${r['Box Top']}</td><td>₹${r['Box Bottom']}</td>
+          <td>${r['Box Width %']}%</td><td>${r['Box Weeks']} wks</td>
+          <td class="levels-cell">${r['Box Start']} → ${r['Box End']}</td>
+          <td>${vRatio}</td><td>${vRising}</td>
+        `;
+      }
+
+      if (scan === 'trendline') {
+        const isHoriz    = r.Setup.includes('Horizontal');
+        const setupBadge = `<span class="badge ${isHoriz?'badge-horiz':'badge-trendline'}">${r.Setup}</span>`;
+        tr.innerHTML = `
+          <td><b>${r.Symbol}</b></td><td>${exBadge}</td><td>₹${r.Price}</td>
+          <td>${setupBadge}</td>
+          <td>₹${r.Level}</td>
+          <td class="levels-cell">${r.Detail}</td>
+          <td class="levels-cell">${r['All Setups']}</td>
+          <td>${vRatio}</td><td>${vRising}</td>
+        `;
+      }
+
+      if (scan === 'breakout') {
+        const tfBadge   = `<span class="badge ${isShort?'badge-short':'badge-breakout'}">${r.Timeframe}</span>`;
+        const bothBadge = r['Both TF'] && r['Both TF'].includes('⭐')
+          ? `<span class="badge badge-both">⭐ Both TF</span>` : '';
+        tr.innerHTML = `
+          <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
+          <td>${dirBadge(r.Direction)}</td>
+          <td>₹${r.Price}</td>
+          <td>${triggerBadge(r.Trigger)}</td>
+          <td>${tfBadge}</td>
+          <td class="levels-cell">${r.Level}</td>
+          <td>${r['Move %']}%</td>
+          <td>${bothBadge}</td>
+          <td>${vRatio}</td><td>${vRising}</td>
+        `;
+      }
+
+      if (scan === 'insidebar') {
+        const bothBadge = r['Both TF'] && r['Both TF'].includes('⭐')
+          ? `<span class="badge badge-both">⭐ Both TF</span>` : '';
+        const cfBadge   = r.Confluence
+          ? `<span class="badge badge-confluence">⭐ ${r.Confluence}</span>` : '-';
+        const tfBadge   = `<span class="badge ${
+          r.Trigger==='Breakout'  ? 'badge-fresh-bo'  :
+          r.Trigger==='Breakdown' ? 'badge-fresh-bd'  :
+          r.Trigger==='Attempt'   ? 'badge-attempt'   : 'badge-baby'
+        }">${r.Timeframe}</span>`;
+        tr.innerHTML = `
+          <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
+          <td>${dirBadge(r.Direction)}</td>
+          <td>₹${r.Price}</td>
+          <td>${tfBadge}</td>
+          <td>${ibTriggerBadge(r.Trigger)}</td>
+          <td>${r['Mother Date']}</td>
+          <td>₹${r['Mother High']}</td>
+          <td>₹${r['Mother Low']}</td>
+          <td style="text-align:center"><b>${r['Inside Bars']}</b></td>
+          <td>${cfBadge}</td>
+          <td>${bothBadge}</td>
+          <td>${vRatio}</td><td>${vRising}</td>
+        `;
+      }
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  function showState(scan, state) {
+    document.getElementById(`${scan}-loading`).style.display = state==='loading' ? 'block'  : 'none';
+    document.getElementById(`${scan}-table`).style.display   = state==='table'   ? 'table'  : 'none';
+    document.getElementById(`${scan}-empty`).style.display   = state==='empty'   ? 'block'  : 'none';
+  }
+
+  // ── Filter listeners ──
+  ['pivot-setup','pivot-weekly','pivot-monthly','pivot-volrising'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => applyFilters('pivot')));
+  ['pivot-search','pivot-volratio'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => applyFilters('pivot')));
+
+  ['darvas-trigger','darvas-boxtype','darvas-volrising'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => applyFilters('darvas')));
+  ['darvas-width','darvas-weeks','darvas-search','darvas-volratio'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => applyFilters('darvas')));
+
+  ['trendline-type','trendline-volrising'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => applyFilters('trendline')));
+  ['trendline-search','trendline-volratio'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => applyFilters('trendline')));
+
+  ['breakout-trigger','breakout-tf','breakout-volrising'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => applyFilters('breakout')));
+  ['breakout-maxpct','breakout-search','breakout-volratio'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => applyFilters('breakout')));
+
+  // Inside bar — N change triggers full reload, others just filter
+  document.getElementById('insidebar-n').addEventListener('change', () => loadScan('insidebar'));
+  ['insidebar-trigger','insidebar-tf','insidebar-confluence','insidebar-volrising'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => applyFilters('insidebar')));
+  ['insidebar-minbars','insidebar-search','insidebar-volratio'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => applyFilters('insidebar')));
+
+  // ── LTP REFRESH ──
+  async function checkMarketStatus() {
+    try {
+      const res      = await fetch('/api/market_status');
+      const json     = await res.json();
+      const btn      = document.getElementById('btn-ltp');
+      const statusEl = document.getElementById('market-status');
+      if (json.open) {
+        btn.disabled         = false;
+        btn.style.background = '#1a3a2a';
+        btn.style.color      = '#44cc88';
+        statusEl.textContent = '🟢 Market Open';
+        statusEl.style.color = '#44cc88';
+      } else {
+        btn.disabled         = true;
+        btn.style.background = '#2a2d3e';
+        btn.style.color      = '#555';
+        statusEl.textContent = '🔴 Market Closed';
+        statusEl.style.color = '#555';
+      }
+    } catch(e) {}
+  }
+
+  async function refreshLTP() {
+    const activeTab = TABS.find(t =>
+      document.getElementById(`section-${t}`).classList.contains('active')
+    );
+    if (!activeTab) return;
+    const data = dataStore[activeTab];
+    if (!data || !data.length) return;
+
+    const seen    = new Set();
+    const symbols = [];
+    data.forEach(r => {
+      const key = `${r.Symbol}_${r.Exchange}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        symbols.push({ symbol: r.Symbol, exchange: r.Exchange });
+      }
+    });
+
+    const btn = document.getElementById('btn-ltp');
+    btn.textContent = '⏳ Fetching...';
+    btn.disabled    = true;
+
+    try {
+      const res  = await fetch('/api/ltp', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ symbols })
+      });
+      const json = await res.json();
+      if (json.status === 'closed') { alert('Market is closed.'); return; }
+      const ltps = json.ltps || {};
+      dataStore[activeTab].forEach(r => {
+        if (ltps[r.Symbol] !== undefined) r.Price = ltps[r.Symbol];
+      });
+      applyFilters(activeTab);
+      document.getElementById('last-updated').textContent =
+        'LTP: ' + new Date().toLocaleTimeString();
+    } catch(e) {
+      console.error('LTP fetch error:', e);
+    } finally {
+      btn.textContent = '🔄 LTP';
+      btn.disabled    = false;
+    }
+  }
+
+  checkMarketStatus();
+  setInterval(checkMarketStatus, 60000);
+</script>
+</body>
+</html>
