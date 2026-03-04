@@ -16,6 +16,10 @@ from history_store import preload_histories, clear_store, store_stats
 from ltp_fetcher import get_ltps_batch, is_market_open
 from market_context import get_context, clear_context
 import pandas as pd
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from digest import run_daily_digest
+import pytz
 
 app = Flask(__name__)
 
@@ -211,6 +215,14 @@ def run_and_enrich(scan_fn, **kwargs):
 def index():
     return render_template('index.html')
 
+@app.route('/api/trigger_digest')
+@login_required
+def api_trigger_digest():
+    from digest import run_daily_digest
+    import threading
+    threading.Thread(target=lambda: run_daily_digest(_cache), daemon=True).start()
+    return jsonify({'status': 'digest triggered in background'})
+
 # ── PIVOT ──
 
 @app.route('/api/scan')
@@ -346,6 +358,27 @@ def api_clear_cache():
 @app.route('/api/fo_count')
 def api_fo_count():
     return jsonify({'count': len(get_fo())})
+
+# ── SCHEDULER ──
+
+def start_scheduler():
+    IST = pytz.timezone('Asia/Kolkata')
+    scheduler = BackgroundScheduler(timezone=IST)
+    # 8:30 AM IST Monday-Friday
+    scheduler.add_job(
+        func=lambda: run_daily_digest(_cache),
+        trigger=CronTrigger(hour=8, minute=30,
+                            day_of_week='mon-fri',
+                            timezone=IST),
+        id='daily_digest',
+        name='Daily Digest + Preload',
+        replace_existing=True,
+    )
+    scheduler.start()
+    print("[Scheduler] Daily digest scheduled at 8:30 AM IST (Mon-Fri)")
+    return scheduler
+
+_scheduler = start_scheduler()
 
 if __name__ == '__main__':
     clear_old_cache()
