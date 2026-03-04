@@ -5,9 +5,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from data_fetcher import get_last_trading_day
 
-GMAIL_USER     = os.environ.get('GMAIL_USER',     'pavan.kolla438@gmail.com')
-GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD', 'nryd rcki xlpr syam')
-DIGEST_TO      = os.environ.get('DIGEST_TO',      'harish216gis@gmail.com')
+GMAIL_USER     = os.environ.get('GMAIL_USER',     '')
+GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD', '')
+DIGEST_TO      = os.environ.get('DIGEST_TO',      '')
 
 
 def preload_all(cache_ref):
