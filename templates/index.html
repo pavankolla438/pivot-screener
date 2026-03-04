@@ -137,6 +137,13 @@
   .badge-score-high { background: #0a4a1a; color: #00ff88; }
   .badge-score-mid  { background: #1a3a1a; color: #44ff88; }
   .badge-score-low  { background: #2a2a1a; color: #ffcc44; }
+  .badge-rsi-bull   { background: #0a3a2a; color: #00ffcc; }
+  .badge-rsi-bear   { background: #3a0a1a; color: #ff88aa; }
+  .badge-rsi-hbull  { background: #0a2a3a; color: #44ddff; }
+  .badge-rsi-hbear  { background: #2a0a2a; color: #dd88ff; }
+  .badge-macd-bull  { background: #0a4a1a; color: #00ff88; }
+  .badge-macd-bear  { background: #4a0a0a; color: #ff4444; }
+  .badge-mixed      { background: #2a2a00; color: #ffdd44; }
 
   .levels-cell { font-size: 0.75rem; color: #888; line-height: 1.6; }
   .levels-cell b { color: #aaa; }
@@ -150,16 +157,18 @@
   .section { display: none; }
   .section.active { display: block; }
 
-  tr.row-short   { background: #1e1212; }
+  tr.row-short         { background: #1e1212; }
   tr.row-short:hover   { background: #2a1616; }
-  tr.row-attempt { background: #1e1a10; }
+  tr.row-attempt       { background: #1e1a10; }
   tr.row-attempt:hover { background: #2a2414; }
-  tr.row-baby    { background: #1a1a1a; }
+  tr.row-baby          { background: #1a1a1a; }
   tr.row-baby:hover    { background: #222222; }
-  tr.row-gap-up  { background: #0f1e14; }
+  tr.row-gap-up        { background: #0f1e14; }
   tr.row-gap-up:hover  { background: #162a1e; }
-  tr.row-gap-down { background: #1e0f0f; }
-  tr.row-gap-down:hover { background: #2a1414; }
+  tr.row-gap-down      { background: #1e0f0f; }
+  tr.row-gap-down:hover{ background: #2a1414; }
+  tr.row-mixed         { background: #1e1e10; }
+  tr.row-mixed:hover   { background: #2a2a14; }
 </style>
 </head>
 <body>
@@ -183,6 +192,7 @@
   <div class="tab"        onclick="switchTab('breakout')">🚀 Breakout / Breakdown</div>
   <div class="tab"        onclick="switchTab('insidebar')">🕯️ Inside Bar</div>
   <div class="tab"        onclick="switchTab('accumulation')">📊 Accumulation</div>
+  <div class="tab"        onclick="switchTab('momentum')">⚡ Momentum</div>
 </div>
 
 <!-- ════════════════ PIVOT ════════════════ -->
@@ -651,8 +661,97 @@
   </div>
 </div>
 
+<!-- ════════════════ MOMENTUM ════════════════ -->
+<div id="section-momentum" class="section">
+  <div class="controls">
+    <div><label>Exchange</label>
+      <select id="momentum-exchange">
+        <option value="BOTH">NSE + BSE</option>
+        <option value="NSE">NSE Only</option>
+        <option value="BSE">BSE Only</option>
+      </select>
+    </div>
+    <div><label>Universe</label>
+      <select id="momentum-fo" class="fo-toggle">
+        <option value="false">All Stocks</option>
+        <option value="true">F&amp;O Only</option>
+      </select>
+    </div>
+    <div><label>Direction</label>
+      <select id="momentum-direction">
+        <option value="BOTH">Long + Short</option>
+        <option value="LONG">🟢 Long Only</option>
+        <option value="SHORT">🔴 Short Only</option>
+      </select>
+    </div>
+    <div><label>Min Score</label>
+      <select id="momentum-score" class="n-select">
+        <option value="1">1+ signals</option>
+        <option value="2" selected>2+ signals</option>
+        <option value="3">3+ signals</option>
+        <option value="4">All 4 signals</option>
+      </select>
+    </div>
+    <div><label>RSI Type</label>
+      <select id="momentum-rsitype">
+        <option value="">All</option>
+        <option value="Bullish Divergence">Bullish Div</option>
+        <option value="Bearish Divergence">Bearish Div</option>
+        <option value="Hidden Bullish">Hidden Bullish</option>
+        <option value="Hidden Bearish">Hidden Bearish</option>
+      </select>
+    </div>
+    <div><label>MACD</label>
+      <select id="momentum-macdtype">
+        <option value="">All</option>
+        <option value="Bull Cross">🟢 Bull Cross</option>
+        <option value="Bear Cross">🔴 Bear Cross</option>
+      </select>
+    </div>
+    <div><label>Agree Only</label>
+      <select id="momentum-agree" class="fo-toggle">
+        <option value="false">All</option>
+        <option value="true">✅ Agree Only</option>
+      </select>
+    </div>
+    <div><label>Min Vol Ratio</label>
+      <input type="text" id="momentum-volratio" placeholder="e.g. 1.5" style="width:75px">
+    </div>
+    <div><label>Symbol</label>
+      <input type="text" id="momentum-search" placeholder="e.g. RELIANCE" style="width:120px">
+    </div>
+    <button class="btn-scan"    onclick="loadScan('momentum')">▶ Run Scan</button>
+    <button class="btn-refresh" onclick="refreshScan('momentum')">🔄 Refresh</button>
+  </div>
+  <div class="stats" id="momentum-stats">Click "Run Scan" to start.</div>
+  <div class="table-wrap">
+    <div id="momentum-loading" class="loading" style="display:none">
+      ⏳ Scanning momentum signals...<span>First run takes 1–2 minutes</span>
+    </div>
+    <table id="momentum-table" style="display:none">
+      <thead><tr>
+        <th onclick="sortTable('momentum','Symbol')">Symbol ↕</th>
+        <th onclick="sortTable('momentum','Exchange')">Exch ↕</th>
+        <th onclick="sortTable('momentum','Direction')">Direction ↕</th>
+        <th onclick="sortTable('momentum','Price')">Price ↕</th>
+        <th onclick="sortTable('momentum','Score')">Score ↕</th>
+        <th>Signals</th>
+        <th>RSI Divergence</th>
+        <th>MACD</th>
+        <th>Agree</th>
+        <th>Timeframe</th>
+        <th>Both TF</th>
+        <th onclick="sortTable('momentum','Vol Ratio')">Vol Ratio ↕</th>
+        <th>Vol Spike</th>
+      </tr></thead>
+      <tbody id="momentum-body"></tbody>
+    </table>
+    <div id="momentum-empty" class="no-results" style="display:none">No momentum setups found.</div>
+  </div>
+</div>
+
 <script>
-  const TABS = ['pivot','darvas','trendline','breakout','insidebar','accumulation'];
+  const TABS = ['pivot','darvas','trendline','breakout','insidebar','accumulation','momentum'];
 
   function switchTab(tab) {
     document.querySelectorAll('.tab').forEach((t, i) =>
@@ -675,12 +774,13 @@
   TABS.forEach(t => dataStore[t] = []);
 
   const endpoints = {
-    pivot:        { load: '/api/scan',              refresh: '/api/refresh' },
-    darvas:       { load: '/api/darvas',             refresh: '/api/darvas/refresh' },
-    trendline:    { load: '/api/trendline',          refresh: '/api/trendline/refresh' },
-    breakout:     { load: '/api/breakout',           refresh: '/api/breakout/refresh' },
-    insidebar:    { load: '/api/insidebar',          refresh: '/api/insidebar/refresh' },
-    accumulation: { load: '/api/accumulation',       refresh: '/api/accumulation/refresh' },
+    pivot:        { load: '/api/scan',             refresh: '/api/refresh' },
+    darvas:       { load: '/api/darvas',            refresh: '/api/darvas/refresh' },
+    trendline:    { load: '/api/trendline',         refresh: '/api/trendline/refresh' },
+    breakout:     { load: '/api/breakout',          refresh: '/api/breakout/refresh' },
+    insidebar:    { load: '/api/insidebar',         refresh: '/api/insidebar/refresh' },
+    accumulation: { load: '/api/accumulation',      refresh: '/api/accumulation/refresh' },
+    momentum:     { load: '/api/momentum',          refresh: '/api/momentum/refresh' },
   };
 
   function getExtraParams(scan) {
@@ -691,6 +791,9 @@
     }
     if (scan === 'accumulation') {
       return `&min_score=${document.getElementById('accumulation-score').value}`;
+    }
+    if (scan === 'momentum') {
+      return `${dir}&min_score=${document.getElementById('momentum-score').value}`;
     }
     return dir;
   }
@@ -816,6 +919,19 @@
       );
     }
 
+    if (scan === 'momentum') {
+      const rsiType  = document.getElementById('momentum-rsitype').value;
+      const macdType = document.getElementById('momentum-macdtype').value;
+      const agreeOnly= document.getElementById('momentum-agree').value === 'true';
+      const search   = document.getElementById('momentum-search').value.trim().toUpperCase();
+      data = data.filter(r =>
+        (!rsiType   || (r['RSI Type']    && r['RSI Type'].includes(rsiType))) &&
+        (!macdType  || (r['MACD Signal'] && r['MACD Signal'].includes(macdType))) &&
+        (!agreeOnly || r['Agree'] === '✅') &&
+        (!search    || r.Symbol.includes(search))
+      );
+    }
+
     data = volFilters(data, scan);
 
     const s = sortState[scan];
@@ -864,6 +980,24 @@
     return `<span class="badge ${cls}">${trigger}</span>`;
   }
 
+  function rsiTypeBadge(rsiType) {
+    if (!rsiType || rsiType === '-') return '<span style="color:#555">-</span>';
+    return rsiType.split(' + ').map(t => {
+      let cls = 'badge-confluence';
+      if      (t.includes('Bullish Divergence'))  cls = 'badge-rsi-bull';
+      else if (t.includes('Bearish Divergence'))  cls = 'badge-rsi-bear';
+      else if (t.includes('Hidden Bullish'))       cls = 'badge-rsi-hbull';
+      else if (t.includes('Hidden Bearish'))       cls = 'badge-rsi-hbear';
+      return `<span class="badge ${cls}">${t}</span>`;
+    }).join('');
+  }
+
+  function macdBadge(macdType) {
+    if (!macdType || macdType === '-') return '<span style="color:#555">-</span>';
+    const cls = macdType.includes('Bull') ? 'badge-macd-bull' : 'badge-macd-bear';
+    return `<span class="badge ${cls}">${macdType}</span>`;
+  }
+
   function boxTypeBadge(boxType) {
     if (!boxType) return '';
     const cls = boxType.includes('Accum') ? 'badge-accum' : 'badge-dist';
@@ -876,6 +1010,7 @@
     if (direction.includes('Short'))   cls = 'badge-short';
     if (direction.includes('Attempt')) cls = 'badge-attempt';
     if (direction.includes('Baby'))    cls = 'badge-baby';
+    if (direction.includes('Mixed'))   cls = 'badge-mixed';
     return `<span class="badge ${cls}">${direction}</span>`;
   }
 
@@ -890,14 +1025,16 @@
       const isShort   = r.Direction && r.Direction.includes('Short');
       const isAttempt = r.Direction && r.Direction.includes('Attempt');
       const isBaby    = r.Direction && r.Direction.includes('Baby');
+      const isMixed   = r.Direction && r.Direction.includes('Mixed');
       const isGapUp   = r.Trigger  && r.Trigger.includes('Gap Up');
       const isGapDown = r.Trigger  && r.Trigger.includes('Gap Down');
 
-      if (isGapUp)        tr.classList.add('row-gap-up');
+      if      (isGapUp)   tr.classList.add('row-gap-up');
       else if (isGapDown) tr.classList.add('row-gap-down');
       else if (isShort)   tr.classList.add('row-short');
       else if (isAttempt) tr.classList.add('row-attempt');
       else if (isBaby)    tr.classList.add('row-baby');
+      else if (isMixed)   tr.classList.add('row-mixed');
 
       const exBadge = `<span class="badge ${r.Exchange==='NSE'?'badge-nse':'badge-bse'}">${r.Exchange}</span>`;
       const vRatio  = volCell(r);
@@ -1004,8 +1141,8 @@
       }
 
       if (scan === 'accumulation') {
-        const scoreCls  = r.Score >= 3 ? 'badge-fresh-bo'
-                        : r.Score == 2 ? 'badge-breakout' : 'badge-score-low';
+        const scoreCls   = r.Score >= 3 ? 'badge-fresh-bo'
+                         : r.Score == 2 ? 'badge-breakout' : 'badge-score-low';
         const scoreBadge = `<span class="badge ${scoreCls}">⭐ ${r.Score}/4</span>`;
         const sigBadges  = (r.Signals || '').split(' + ').filter(Boolean).map(s =>
           `<span class="badge badge-confluence">${s}</span>`
@@ -1022,6 +1159,35 @@
           <td style="text-align:center">${r['52W Low']     || ''}</td>
           <td>${vRatio}</td>
           <td class="vol-cell">${r['Vol Today'] ? Number(r['Vol Today']).toLocaleString() : '-'}</td>
+        `;
+      }
+
+      if (scan === 'momentum') {
+        const scoreCls   = r.Score >= 3 ? 'badge-fresh-bo'
+                         : r.Score == 2 ? 'badge-breakout' : 'badge-score-low';
+        const scoreBadge = `<span class="badge ${scoreCls}">⭐ ${r.Score}/4</span>`;
+        const bothBadge  = r['Both TF'] && r['Both TF'].includes('⭐')
+          ? `<span class="badge badge-both">⭐ Both TF</span>` : '';
+        const sigBadges  = (r.Signals || '').split(' + ').filter(Boolean).map(s => {
+          let cls = 'badge-confluence';
+          if (s.includes('Agree'))    cls = 'badge-both';
+          else if (s.includes('Vol')) cls = 'badge-narrow';
+          return `<span class="badge ${cls}">${s}</span>`;
+        }).join('');
+        tr.innerHTML = `
+          <td><b>${r.Symbol}</b></td>
+          <td>${exBadge}</td>
+          <td>${dirBadge(r.Direction)}</td>
+          <td>₹${r.Price}</td>
+          <td>${scoreBadge}</td>
+          <td>${sigBadges}</td>
+          <td class="levels-cell">${rsiTypeBadge(r['RSI Type'])}<br><small style="color:#555">${r['RSI Values']||''}</small></td>
+          <td class="levels-cell">${macdBadge(r['MACD Signal'])}<br><small style="color:#555">${r['MACD Values']||''}</small></td>
+          <td style="text-align:center">${r['Agree'] || ''}</td>
+          <td><span class="badge badge-cpr">${r.Timeframe||''}</span></td>
+          <td>${bothBadge}</td>
+          <td>${vRatio}</td>
+          <td style="text-align:center">${r['Vol Spike'] || ''}</td>
         `;
       }
 
@@ -1064,10 +1230,17 @@
 
   document.getElementById('accumulation-score').addEventListener('change',
     () => loadScan('accumulation'));
-  ['accumulation-signal'].forEach(id =>
-    document.getElementById(id).addEventListener('change', () => applyFilters('accumulation')));
+  document.getElementById('accumulation-signal').addEventListener('change',
+    () => applyFilters('accumulation'));
   ['accumulation-volratio','accumulation-search'].forEach(id =>
     document.getElementById(id).addEventListener('input', () => applyFilters('accumulation')));
+
+  document.getElementById('momentum-score').addEventListener('change',
+    () => loadScan('momentum'));
+  ['momentum-rsitype','momentum-macdtype','momentum-agree','momentum-direction'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => applyFilters('momentum')));
+  ['momentum-volratio','momentum-search'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => applyFilters('momentum')));
 
   // ── LTP ──
   async function checkMarketStatus() {

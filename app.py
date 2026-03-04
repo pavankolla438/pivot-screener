@@ -4,6 +4,7 @@ import os
 from flask import Flask, render_template, jsonify, request
 from accumulation_scanner import run_accumulation_scan
 from scanner import run_scan
+from momentum_scanner import run_momentum_scan
 from darvas_scanner import run_darvas_scan
 from trendline_scanner import run_trendline_scan
 from breakout_scanner import run_breakout_scan
@@ -80,7 +81,7 @@ def login():
 def api_accumulation():
     exchange, fo_only, _ = get_params()
     ensure_preloaded(exchange)
-    min_score = int(request.args.get('min_score', 1))
+    min_score = int(request.args.get('min_score', 2))
     cache_key = f"accumulation_{exchange}_{min_score}"
     if cache_key not in _cache:
         _cache[cache_key] = run_and_enrich(
@@ -91,12 +92,36 @@ def api_accumulation():
 def api_accumulation_refresh():
     exchange, fo_only, _ = get_params()
     ensure_preloaded(exchange)
-    min_score = int(request.args.get('min_score', 1))
+    min_score = int(request.args.get('min_score', 2))
     cache_key = f"accumulation_{exchange}_{min_score}"
     _cache.pop(cache_key, None)
     _cache[cache_key] = run_and_enrich(
         run_accumulation_scan, exchange=exchange, min_score=min_score)
     return to_json(filter_fo(_cache[cache_key], fo_only))
+
+# ── MOMENTUM ──
+
+@app.route('/api/momentum')
+def api_momentum():
+    exchange, fo_only, direction = get_params()
+    ensure_preloaded(exchange)
+    min_score = int(request.args.get('min_score', 2))
+    cache_key = f"momentum_{exchange}_{min_score}"
+    if cache_key not in _cache:
+        _cache[cache_key] = run_and_enrich(
+            run_momentum_scan, exchange=exchange, min_score=min_score)
+    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+
+@app.route('/api/momentum/refresh')
+def api_momentum_refresh():
+    exchange, fo_only, direction = get_params()
+    ensure_preloaded(exchange)
+    min_score = int(request.args.get('min_score', 2))
+    cache_key = f"momentum_{exchange}_{min_score}"
+    _cache.pop(cache_key, None)
+    _cache[cache_key] = run_and_enrich(
+        run_momentum_scan, exchange=exchange, min_score=min_score)
+    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
 
 @app.route('/logout')
 def logout():
@@ -165,7 +190,7 @@ def ensure_preloaded(exchange):
         ctx = contexts.get(exch)
         if ctx and ctx.daily is not None:
             symbols = ctx.daily['symbol'].tolist()
-            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=60)
+            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=120)
             store_stats()
 
         _preloaded.add(key)
