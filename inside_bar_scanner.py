@@ -163,13 +163,13 @@ def check_confluence(symbol, exchange, mother_high, mother_low, current_price):
 # MAIN SCAN
 # ─────────────────────────────────────────
 
-def run_inside_bar_scan(exchange='BOTH', direction='BOTH', n=DEFAULT_N):
+def run_inside_bar_scan(exchange='ALL', direction='BOTH', n=DEFAULT_N):
     n   = max(MIN_N, min(MAX_N, int(n)))
     day = get_last_trading_day()
     print(f"\n=== Inside Bar Scan | {day} | N={n} | Exchange: {exchange} ===\n")
 
     results  = []
-    contexts = get_context(exchange)
+    contexts = get_context('ALL')
 
     for exch, ctx in contexts.items():
         if ctx is None or ctx.daily is None:

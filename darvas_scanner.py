@@ -157,12 +157,12 @@ def check_distribution_retest(current_price, box):
 # MAIN SCAN
 # ─────────────────────────────────────────
 
-def run_darvas_scan(exchange='BOTH', direction='BOTH'):
+def run_darvas_scan(exchange='ALL', direction='BOTH'):
     day = get_last_trading_day()
     print(f"\n=== Darvas Box Scan | {day} | Exchange: {exchange} | Direction: {direction} ===\n")
 
     results  = []
-    contexts = get_context(exchange)
+    contexts = get_context('ALL')
 
     for exch, ctx in contexts.items():
         if ctx is None or ctx.daily is None:

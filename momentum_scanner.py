@@ -276,12 +276,12 @@ def get_direction(divs, macd_cross):
 # MAIN SCAN
 # ─────────────────────────────────────────
 
-def run_momentum_scan(exchange='BOTH', min_score=2):
+def run_momentum_scan(exchange='ALL', min_score=2):
     day = get_last_trading_day()
     print(f"\n=== Momentum Scan | {day} | Exchange: {exchange} ===\n")
 
     results  = []
-    contexts = get_context(exchange)
+    contexts = get_context('ALL')
 
     for exch, ctx in contexts.items():
         if ctx is None or ctx.daily is None:

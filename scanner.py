@@ -36,12 +36,12 @@ def classify_hit(hits):
         labels.append('Pivot')
     return ' + '.join(labels) if labels else None
 
-def run_scan(exchange='BOTH'):
+def run_scan(exchange='ALL'):
     day = get_last_trading_day()
     print(f"\n=== Pivot Confluence Scan | {day} | Exchange: {exchange} ===\n")
 
     results  = []
-    contexts = get_context(exchange)
+    contexts = get_context('ALL')
 
     for exch, ctx in contexts.items():
         if ctx is None:

@@ -140,12 +140,12 @@ def score_symbol(df):
 # MAIN SCAN
 # ─────────────────────────────────────────
 
-def run_accumulation_scan(exchange='BOTH', min_score=1, min_vol_ratio=0.0):
+def run_accumulation_scan(exchange='ALL', min_score=1, min_vol_ratio=0.0):
     day = get_last_trading_day()
     print(f"\n=== Accumulation Scan | {day} | Exchange: {exchange} ===\n")
 
     results  = []
-    contexts = get_context(exchange)
+    contexts = get_context('ALL')
 
     for exch, ctx in contexts.items():
         if ctx is None or ctx.daily is None:

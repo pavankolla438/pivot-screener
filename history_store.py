@@ -105,37 +105,37 @@ def _build_swing_cache(exchange, interval, window=5, min_prominence_pct=0.5):
 # PRELOAD
 # ─────────────────────────────────────────
 
-def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=60):
+def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=252):
     global _store
 
-    if exchange not in _store:
-        _store[exchange] = {}
+    # normalize exchange key
+    exch = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
+
+    if exch not in _store:
+        _store[exch] = {}
 
     for interval in intervals:
-        # Already fully loaded
-        if interval in _store[exchange] and _store[exchange][interval] is not None:
-            loaded = _store[exchange][interval]['_sym'].nunique()
+        if interval in _store[exch] and _store[exch][interval] is not None:
+            loaded = _store[exch][interval]['_sym'].nunique()
             if loaded >= len(symbols) * 0.9:
-                print(f"[Store] {exchange} {interval}: already in memory ({loaded} symbols)")
-                if exchange not in _index or interval not in _index.get(exchange, {}):
-                    _build_index(exchange, interval)
-                key = f"{exchange}_{interval}"
+                print(f"[Store] {exch} {interval}: already in memory ({loaded} symbols)")
+                if exch not in _index or interval not in _index.get(exch, {}):
+                    _build_index(exch, interval)
+                key = f"{exch}_{interval}"
                 if key not in _swing_cache:
-                    _build_swing_cache(exchange, interval, window=7, min_prominence_pct=2.0)
+                    _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
                 continue
 
-        # Try bulk parquet
-        combined = load_bulk_cache(exchange, interval)
+        combined = load_bulk_cache(exch, interval)
 
         if combined is not None:
             loaded_syms = set(combined['_sym'].unique())
             missing     = [s for s in symbols if s not in loaded_syms]
-
             if missing:
-                print(f"[Store] {exchange} {interval}: "
-                      f"{len(missing)} missing, fetching...")
+                print(f"[Store] {exch} {interval}: {len(missing)} missing, fetching...")
+                # for ALL exchange, fetch missing from NSE first then BSE
                 fetched = fetch_histories_batch(
-                    missing, exchange,
+                    missing, exch if exch != 'ALL' else 'NSE',
                     interval=interval,
                     lookback_bars=lookback_bars
                 )
@@ -147,14 +147,14 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                         new_frames.append(df)
                 if new_frames:
                     combined = pd.concat([combined] + new_frames)
-                    _save_bulk(combined, exchange, interval)
-
-            _store[exchange][interval] = combined
-
+                    _save_bulk(combined, exch, interval)
+            _store[exch][interval] = combined
         else:
-            print(f"[Store] {exchange} {interval}: no bulk cache, fetching all...")
+            print(f"[Store] {exch} {interval}: no bulk cache, fetching all...")
+            # for ALL, fetch from NSE (yfinance handles both)
+            fetch_exch = exch if exch != 'ALL' else 'NSE'
             fetched = fetch_histories_batch(
-                symbols, exchange,
+                symbols, fetch_exch,
                 interval=interval,
                 lookback_bars=lookback_bars
             )
@@ -164,20 +164,19 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                     df = df.tail(lookback_bars).copy()
                     df['_sym'] = sym
                     frames.append(df)
-
             if frames:
                 combined = pd.concat(frames)
-                _save_bulk(combined, exchange, interval)
-                _store[exchange][interval] = combined
+                _save_bulk(combined, exch, interval)
+                _store[exch][interval] = combined
             else:
-                _store[exchange][interval] = None
+                _store[exch][interval] = None
 
-        _build_index(exchange, interval)
-        _build_swing_cache(exchange, interval, window=7, min_prominence_pct=2.0)
+        _build_index(exch, interval)
+        _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
 
-        if _store[exchange][interval] is not None:
-            valid = _store[exchange][interval]['_sym'].nunique()
-            print(f"[Store] {exchange} {interval}: {valid}/{len(symbols)} symbols loaded")
+        if _store[exch][interval] is not None:
+            valid = _store[exch][interval]['_sym'].nunique()
+            print(f"[Store] {exch} {interval}: {valid}/{len(symbols)} symbols loaded")
 
 def _save_bulk(combined_df, exchange, interval):
     from cache_helper import _bulk_cache_path
@@ -191,22 +190,25 @@ def _save_bulk(combined_df, exchange, interval):
 # ─────────────────────────────────────────
 
 def get_history(symbol, exchange, interval='1d'):
+    exch = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
     try:
-        df = _index[exchange][interval].get(symbol)
+        df = _index[exch][interval].get(symbol)
         if df is not None:
             return df
     except KeyError:
         pass
     from cache_helper import fetch_history_cached
-    return fetch_history_cached(symbol, exchange, interval=interval, lookback_bars=60)
+    return fetch_history_cached(symbol, exchange, interval=interval, lookback_bars=252)
+
 
 # ─────────────────────────────────────────
 # GET ALL HISTORIES — full dict for vectorized scanners
 # ─────────────────────────────────────────
 
 def get_all_histories(exchange, interval='1d'):
+    exch = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
     try:
-        return _index[exchange][interval]
+        return _index[exch][interval]
     except KeyError:
         return {}
 
@@ -215,7 +217,8 @@ def get_all_histories(exchange, interval='1d'):
 # ─────────────────────────────────────────
 
 def get_swing_points(symbol, exchange, interval='1d'):
-    key   = f"{exchange}_{interval}"
+    exch  = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
+    key   = f"{exch}_{interval}"
     entry = _swing_cache.get(key, {}).get(symbol, {})
     return (
         entry.get('swing_high_idxs', []),

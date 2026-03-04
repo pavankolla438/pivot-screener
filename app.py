@@ -9,7 +9,7 @@ from darvas_scanner import run_darvas_scan
 from trendline_scanner import run_trendline_scan
 from breakout_scanner import run_breakout_scan
 from inside_bar_scanner import run_inside_bar_scan
-from data_fetcher import get_fo_symbols, get_nse_ohlc, get_bse_ohlc, get_last_trading_day
+from data_fetcher import get_fo_symbols, get_last_trading_day
 from cache_helper import clear_old_cache, clear_old_bulk_cache
 from volume_helper import enrich_with_volume
 from history_store import preload_histories, clear_store, store_stats
@@ -22,7 +22,6 @@ from digest import run_daily_digest
 import pytz
 
 app = Flask(__name__)
-
 app.secret_key = os.environ.get('SECRET_KEY', 'change-this-locally')
 APP_PASSWORD    = os.environ.get('APP_PASSWORD', 'changeme')
 
@@ -79,58 +78,9 @@ def login():
     </html>
     '''
 
-# ── ACCUMULATION ──
-
-@app.route('/api/accumulation')
-def api_accumulation():
-    exchange, fo_only, _ = get_params()
-    ensure_preloaded(exchange)
-    min_score = int(request.args.get('min_score', 2))
-    cache_key = f"accumulation_{exchange}_{min_score}"
-    if cache_key not in _cache:
-        _cache[cache_key] = run_and_enrich(
-            run_accumulation_scan, exchange=exchange, min_score=min_score)
-    return to_json(filter_fo(_cache[cache_key], fo_only))
-
-@app.route('/api/accumulation/refresh')
-def api_accumulation_refresh():
-    exchange, fo_only, _ = get_params()
-    ensure_preloaded(exchange)
-    min_score = int(request.args.get('min_score', 2))
-    cache_key = f"accumulation_{exchange}_{min_score}"
-    _cache.pop(cache_key, None)
-    _cache[cache_key] = run_and_enrich(
-        run_accumulation_scan, exchange=exchange, min_score=min_score)
-    return to_json(filter_fo(_cache[cache_key], fo_only))
-
-# ── MOMENTUM ──
-
-@app.route('/api/momentum')
-def api_momentum():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
-    min_score = int(request.args.get('min_score', 2))
-    cache_key = f"momentum_{exchange}_{min_score}"
-    if cache_key not in _cache:
-        _cache[cache_key] = run_and_enrich(
-            run_momentum_scan, exchange=exchange, min_score=min_score)
-    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
-
-@app.route('/api/momentum/refresh')
-def api_momentum_refresh():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
-    min_score = int(request.args.get('min_score', 2))
-    cache_key = f"momentum_{exchange}_{min_score}"
-    _cache.pop(cache_key, None)
-    _cache[cache_key] = run_and_enrich(
-        run_momentum_scan, exchange=exchange, min_score=min_score)
-    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect('/login')
+# ─────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────
 
 _cache      = {}
 _fo_symbols = None
@@ -149,10 +99,9 @@ def filter_fo(df, fo_only):
     return df[df['Symbol'].isin(fo)].reset_index(drop=True)
 
 def get_params():
-    exchange  = request.args.get('exchange',  'BOTH').upper()
     fo_only   = request.args.get('fo_only',   'false').lower() == 'true'
     direction = request.args.get('direction', 'BOTH').upper()
-    return exchange, fo_only, direction
+    return fo_only, direction
 
 def dir_filter(df, direction):
     if direction == 'BOTH' or df.empty or 'Direction' not in df.columns:
@@ -172,33 +121,19 @@ def to_json(df):
         return jsonify({'count': 0, 'data': []})
     return jsonify({'count': len(df), 'data': df.to_dict(orient='records')})
 
-def ensure_preloaded(exchange):
-    exchanges = []
-    if exchange in ('NSE', 'BOTH'):
-        exchanges.append('NSE')
-    if exchange in ('BSE', 'BOTH'):
-        exchanges.append('BSE')
-
-    day = get_last_trading_day()
-
-    for exch in exchanges:
-        key = f"{exch}_{day}"
-        if key in _preloaded:
-            continue
-        print(f"\n[Preload] Starting preload for {exch}...")
-
-        # Build market context (daily + weekly/monthly OHLC + pivots)
-        contexts = get_context(exch)
-
-        # Preload symbol histories into memory
-        ctx = contexts.get(exch)
-        if ctx and ctx.daily is not None:
-            symbols = ctx.daily['symbol'].tolist()
-            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=252)
-            store_stats()
-
-        _preloaded.add(key)
-        print(f"[Preload] {exch} complete.\n")
+def ensure_preloaded():
+    key = f"ALL_{get_last_trading_day()}"
+    if key in _preloaded:
+        return
+    print(f"\n[Preload] Starting unified preload...")
+    contexts = get_context('ALL')
+    ctx = contexts.get('ALL')
+    if ctx and ctx.daily is not None:
+        symbols = ctx.daily['symbol'].tolist()
+        preload_histories(symbols, 'ALL', intervals=('1d','1wk'), lookback_bars=252)
+        store_stats()
+    _preloaded.add(key)
+    print(f"[Preload] ALL complete.\n")
 
 def run_and_enrich(scan_fn, **kwargs):
     df = scan_fn(**kwargs)
@@ -218,7 +153,6 @@ def index():
 @app.route('/api/trigger_digest')
 @login_required
 def api_trigger_digest():
-    from digest import run_daily_digest
     import threading
     threading.Thread(target=lambda: run_daily_digest(_cache), daemon=True).start()
     return jsonify({'status': 'digest triggered in background'})
@@ -227,104 +161,138 @@ def api_trigger_digest():
 
 @app.route('/api/scan')
 def api_scan():
-    exchange, fo_only, _ = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"pivot_{exchange}"
-    if cache_key not in _cache:
-        _cache[cache_key] = run_and_enrich(run_scan, exchange=exchange)
-    return to_json(filter_fo(_cache[cache_key], fo_only))
+    fo_only, _ = get_params()
+    ensure_preloaded()
+    if 'pivot_ALL' not in _cache:
+        _cache['pivot_ALL'] = run_and_enrich(run_scan)
+    return to_json(filter_fo(_cache['pivot_ALL'], fo_only))
 
 @app.route('/api/refresh')
 def api_refresh():
-    exchange, fo_only, _ = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"pivot_{exchange}"
-    _cache.pop(cache_key, None)
-    _cache[cache_key] = run_and_enrich(run_scan, exchange=exchange)
-    return to_json(filter_fo(_cache[cache_key], fo_only))
+    fo_only, _ = get_params()
+    ensure_preloaded()
+    _cache.pop('pivot_ALL', None)
+    _cache['pivot_ALL'] = run_and_enrich(run_scan)
+    return to_json(filter_fo(_cache['pivot_ALL'], fo_only))
 
 # ── DARVAS ──
 
 @app.route('/api/darvas')
 def api_darvas():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"darvas_{exchange}"
-    if cache_key not in _cache:
-        _cache[cache_key] = run_and_enrich(run_darvas_scan, exchange=exchange, direction='BOTH')
-    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+    fo_only, direction = get_params()
+    ensure_preloaded()
+    if 'darvas_ALL' not in _cache:
+        _cache['darvas_ALL'] = run_and_enrich(run_darvas_scan, direction='BOTH')
+    return to_json(filter_fo(dir_filter(_cache['darvas_ALL'], direction), fo_only))
 
 @app.route('/api/darvas/refresh')
 def api_darvas_refresh():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"darvas_{exchange}"
-    _cache.pop(cache_key, None)
-    _cache[cache_key] = run_and_enrich(run_darvas_scan, exchange=exchange, direction='BOTH')
-    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+    fo_only, direction = get_params()
+    ensure_preloaded()
+    _cache.pop('darvas_ALL', None)
+    _cache['darvas_ALL'] = run_and_enrich(run_darvas_scan, direction='BOTH')
+    return to_json(filter_fo(dir_filter(_cache['darvas_ALL'], direction), fo_only))
 
 # ── TRENDLINE ──
 
 @app.route('/api/trendline')
 def api_trendline():
-    exchange, fo_only, _ = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"trendline_{exchange}"
-    if cache_key not in _cache:
-        _cache[cache_key] = run_and_enrich(run_trendline_scan, exchange=exchange)
-    return to_json(filter_fo(_cache[cache_key], fo_only))
+    fo_only, _ = get_params()
+    ensure_preloaded()
+    if 'trendline_ALL' not in _cache:
+        _cache['trendline_ALL'] = run_and_enrich(run_trendline_scan)
+    return to_json(filter_fo(_cache['trendline_ALL'], fo_only))
 
 @app.route('/api/trendline/refresh')
 def api_trendline_refresh():
-    exchange, fo_only, _ = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"trendline_{exchange}"
-    _cache.pop(cache_key, None)
-    _cache[cache_key] = run_and_enrich(run_trendline_scan, exchange=exchange)
-    return to_json(filter_fo(_cache[cache_key], fo_only))
+    fo_only, _ = get_params()
+    ensure_preloaded()
+    _cache.pop('trendline_ALL', None)
+    _cache['trendline_ALL'] = run_and_enrich(run_trendline_scan)
+    return to_json(filter_fo(_cache['trendline_ALL'], fo_only))
 
 # ── BREAKOUT ──
 
 @app.route('/api/breakout')
 def api_breakout():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"breakout_{exchange}"
-    if cache_key not in _cache:
-        _cache[cache_key] = run_and_enrich(run_breakout_scan, exchange=exchange, direction='BOTH')
-    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+    fo_only, direction = get_params()
+    ensure_preloaded()
+    if 'breakout_ALL' not in _cache:
+        _cache['breakout_ALL'] = run_and_enrich(run_breakout_scan, direction='BOTH')
+    return to_json(filter_fo(dir_filter(_cache['breakout_ALL'], direction), fo_only))
 
 @app.route('/api/breakout/refresh')
 def api_breakout_refresh():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
-    cache_key = f"breakout_{exchange}"
-    _cache.pop(cache_key, None)
-    _cache[cache_key] = run_and_enrich(run_breakout_scan, exchange=exchange, direction='BOTH')
-    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+    fo_only, direction = get_params()
+    ensure_preloaded()
+    _cache.pop('breakout_ALL', None)
+    _cache['breakout_ALL'] = run_and_enrich(run_breakout_scan, direction='BOTH')
+    return to_json(filter_fo(dir_filter(_cache['breakout_ALL'], direction), fo_only))
 
 # ── INSIDE BAR ──
 
 @app.route('/api/insidebar')
 def api_insidebar():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
+    fo_only, direction = get_params()
+    ensure_preloaded()
     n         = int(request.args.get('n', 2))
-    cache_key = f"insidebar_{exchange}_{n}"
+    cache_key = f"insidebar_ALL_{n}"
     if cache_key not in _cache:
-        _cache[cache_key] = run_and_enrich(
-            run_inside_bar_scan, exchange=exchange, direction='BOTH', n=n)
+        _cache[cache_key] = run_and_enrich(run_inside_bar_scan, direction='BOTH', n=n)
     return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
 
 @app.route('/api/insidebar/refresh')
 def api_insidebar_refresh():
-    exchange, fo_only, direction = get_params()
-    ensure_preloaded(exchange)
+    fo_only, direction = get_params()
+    ensure_preloaded()
     n         = int(request.args.get('n', 2))
-    cache_key = f"insidebar_{exchange}_{n}"
+    cache_key = f"insidebar_ALL_{n}"
     _cache.pop(cache_key, None)
-    _cache[cache_key] = run_and_enrich(
-        run_inside_bar_scan, exchange=exchange, direction='BOTH', n=n)
+    _cache[cache_key] = run_and_enrich(run_inside_bar_scan, direction='BOTH', n=n)
+    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+
+# ── ACCUMULATION ──
+
+@app.route('/api/accumulation')
+def api_accumulation():
+    fo_only, _ = get_params()
+    ensure_preloaded()
+    min_score = int(request.args.get('min_score', 1))
+    cache_key = f"accumulation_ALL_{min_score}"
+    if cache_key not in _cache:
+        _cache[cache_key] = run_and_enrich(run_accumulation_scan, min_score=min_score)
+    return to_json(filter_fo(_cache[cache_key], fo_only))
+
+@app.route('/api/accumulation/refresh')
+def api_accumulation_refresh():
+    fo_only, _ = get_params()
+    ensure_preloaded()
+    min_score = int(request.args.get('min_score', 1))
+    cache_key = f"accumulation_ALL_{min_score}"
+    _cache.pop(cache_key, None)
+    _cache[cache_key] = run_and_enrich(run_accumulation_scan, min_score=min_score)
+    return to_json(filter_fo(_cache[cache_key], fo_only))
+
+# ── MOMENTUM ──
+
+@app.route('/api/momentum')
+def api_momentum():
+    fo_only, direction = get_params()
+    ensure_preloaded()
+    min_score = int(request.args.get('min_score', 2))
+    cache_key = f"momentum_ALL_{min_score}"
+    if cache_key not in _cache:
+        _cache[cache_key] = run_and_enrich(run_momentum_scan, min_score=min_score)
+    return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+
+@app.route('/api/momentum/refresh')
+def api_momentum_refresh():
+    fo_only, direction = get_params()
+    ensure_preloaded()
+    min_score = int(request.args.get('min_score', 2))
+    cache_key = f"momentum_ALL_{min_score}"
+    _cache.pop(cache_key, None)
+    _cache[cache_key] = run_and_enrich(run_momentum_scan, min_score=min_score)
     return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
 
 # ── LTP ──
@@ -364,7 +332,6 @@ def api_fo_count():
 def start_scheduler():
     IST = pytz.timezone('Asia/Kolkata')
     scheduler = BackgroundScheduler(timezone=IST)
-    # 8:30 AM IST Monday-Friday
     scheduler.add_job(
         func=lambda: run_daily_digest(_cache),
         trigger=CronTrigger(hour=8, minute=30,

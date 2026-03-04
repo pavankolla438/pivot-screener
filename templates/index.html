@@ -198,13 +198,6 @@
 <!-- ════════════════ PIVOT ════════════════ -->
 <div id="section-pivot" class="section active">
   <div class="controls">
-    <div><label>Exchange</label>
-      <select id="pivot-exchange">
-        <option value="BOTH">NSE + BSE</option>
-        <option value="NSE">NSE Only</option>
-        <option value="BSE">BSE Only</option>
-      </select>
-    </div>
     <div><label>Universe</label>
       <select id="pivot-fo" class="fo-toggle">
         <option value="false">All Stocks</option>
@@ -259,8 +252,7 @@
     <table id="pivot-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('pivot','Symbol')">Symbol ↕</th>
-        <th onclick="sortTable('pivot','Exchange')">Exch ↕</th>
-        <th onclick="sortTable('pivot','Price')">Price ↕</th>
+                <th onclick="sortTable('pivot','Price')">Price ↕</th>
         <th>Setup</th>
         <th>Weekly Hit</th>
         <th>Monthly Hit</th>
@@ -279,13 +271,6 @@
 <!-- ════════════════ DARVAS ════════════════ -->
 <div id="section-darvas" class="section">
   <div class="controls">
-    <div><label>Exchange</label>
-      <select id="darvas-exchange">
-        <option value="BOTH">NSE + BSE</option>
-        <option value="NSE">NSE Only</option>
-        <option value="BSE">BSE Only</option>
-      </select>
-    </div>
     <div><label>Universe</label>
       <select id="darvas-fo" class="fo-toggle">
         <option value="false">All Stocks</option>
@@ -343,8 +328,7 @@
     <table id="darvas-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('darvas','Symbol')">Symbol ↕</th>
-        <th onclick="sortTable('darvas','Exchange')">Exch ↕</th>
-        <th onclick="sortTable('darvas','Direction')">Direction ↕</th>
+                <th onclick="sortTable('darvas','Direction')">Direction ↕</th>
         <th onclick="sortTable('darvas','Box Type')">Box Type ↕</th>
         <th onclick="sortTable('darvas','Price')">Price ↕</th>
         <th onclick="sortTable('darvas','Trigger')">Trigger ↕</th>
@@ -365,13 +349,6 @@
 <!-- ════════════════ TRENDLINE ════════════════ -->
 <div id="section-trendline" class="section">
   <div class="controls">
-    <div><label>Exchange</label>
-      <select id="trendline-exchange">
-        <option value="BOTH">NSE + BSE</option>
-        <option value="NSE">NSE Only</option>
-        <option value="BSE">BSE Only</option>
-      </select>
-    </div>
     <div><label>Universe</label>
       <select id="trendline-fo" class="fo-toggle">
         <option value="false">All Stocks</option>
@@ -406,8 +383,7 @@
     <table id="trendline-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('trendline','Symbol')">Symbol ↕</th>
-        <th onclick="sortTable('trendline','Exchange')">Exch ↕</th>
-        <th onclick="sortTable('trendline','Price')">Price ↕</th>
+                <th onclick="sortTable('trendline','Price')">Price ↕</th>
         <th onclick="sortTable('trendline','Setup')">Setup ↕</th>
         <th onclick="sortTable('trendline','Level')">Level ↕</th>
         <th>Detail</th>
@@ -424,13 +400,6 @@
 <!-- ════════════════ BREAKOUT ════════════════ -->
 <div id="section-breakout" class="section">
   <div class="controls">
-    <div><label>Exchange</label>
-      <select id="breakout-exchange">
-        <option value="BOTH">NSE + BSE</option>
-        <option value="NSE">NSE Only</option>
-        <option value="BSE">BSE Only</option>
-      </select>
-    </div>
     <div><label>Universe</label>
       <select id="breakout-fo" class="fo-toggle">
         <option value="false">All Stocks</option>
@@ -451,8 +420,6 @@
         <option value="Breakout">Breakout</option>
         <option value="Fresh Breakdown">Fresh Breakdown</option>
         <option value="Breakdown">Breakdown</option>
-        <option value="Gap Up">🟢 Gap Up</option>
-        <option value="Gap Down">🔴 Gap Down</option>
       </select>
     </div>
     <div><label>Timeframe</label>
@@ -487,15 +454,13 @@
     <table id="breakout-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('breakout','Symbol')">Symbol ↕</th>
-        <th onclick="sortTable('breakout','Exchange')">Exch ↕</th>
-        <th onclick="sortTable('breakout','Direction')">Direction ↕</th>
+                <th onclick="sortTable('breakout','Direction')">Direction ↕</th>
         <th onclick="sortTable('breakout','Price')">Price ↕</th>
         <th onclick="sortTable('breakout','Trigger')">Trigger ↕</th>
         <th onclick="sortTable('breakout','Timeframe')">Timeframe ↕</th>
         <th>Level</th>
         <th onclick="sortTable('breakout','Move %')">Move % ↕</th>
         <th>Both TF</th>
-        <th onclick="sortTable('breakout','Gap %')">Gap % ↕</th>
         <th onclick="sortTable('breakout','Vol Ratio')">Vol Ratio ↕</th>
         <th>Vol Rising</th>
       </tr></thead>
@@ -508,13 +473,6 @@
 <!-- ════════════════ INSIDE BAR ════════════════ -->
 <div id="section-insidebar" class="section">
   <div class="controls">
-    <div><label>Exchange</label>
-      <select id="insidebar-exchange">
-        <option value="BOTH">NSE + BSE</option>
-        <option value="NSE">NSE Only</option>
-        <option value="BSE">BSE Only</option>
-      </select>
-    </div>
     <div><label>Universe</label>
       <select id="insidebar-fo" class="fo-toggle">
         <option value="false">All Stocks</option>
@@ -576,8 +534,7 @@
     <table id="insidebar-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('insidebar','Symbol')">Symbol ↕</th>
-        <th onclick="sortTable('insidebar','Exchange')">Exch ↕</th>
-        <th onclick="sortTable('insidebar','Direction')">Direction ↕</th>
+                <th onclick="sortTable('insidebar','Direction')">Direction ↕</th>
         <th onclick="sortTable('insidebar','Price')">Price ↕</th>
         <th onclick="sortTable('insidebar','Timeframe')">Timeframe ↕</th>
         <th onclick="sortTable('insidebar','Trigger')">Trigger ↕</th>
@@ -599,13 +556,6 @@
 <!-- ════════════════ ACCUMULATION ════════════════ -->
 <div id="section-accumulation" class="section">
   <div class="controls">
-    <div><label>Exchange</label>
-      <select id="accumulation-exchange">
-        <option value="BOTH">NSE + BSE</option>
-        <option value="NSE">NSE Only</option>
-        <option value="BSE">BSE Only</option>
-      </select>
-    </div>
     <div><label>Universe</label>
       <select id="accumulation-fo" class="fo-toggle">
         <option value="false">All Stocks</option>
@@ -644,8 +594,7 @@
     <table id="accumulation-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('accumulation','Symbol')">Symbol ↕</th>
-        <th onclick="sortTable('accumulation','Exchange')">Exch ↕</th>
-        <th onclick="sortTable('accumulation','Price')">Price ↕</th>
+                <th onclick="sortTable('accumulation','Price')">Price ↕</th>
         <th onclick="sortTable('accumulation','Score')">Score ↕</th>
         <th>Signals</th>
         <th>Tight+Vol↑</th>
@@ -664,13 +613,6 @@
 <!-- ════════════════ MOMENTUM ════════════════ -->
 <div id="section-momentum" class="section">
   <div class="controls">
-    <div><label>Exchange</label>
-      <select id="momentum-exchange">
-        <option value="BOTH">NSE + BSE</option>
-        <option value="NSE">NSE Only</option>
-        <option value="BSE">BSE Only</option>
-      </select>
-    </div>
     <div><label>Universe</label>
       <select id="momentum-fo" class="fo-toggle">
         <option value="false">All Stocks</option>
@@ -731,8 +673,7 @@
     <table id="momentum-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('momentum','Symbol')">Symbol ↕</th>
-        <th onclick="sortTable('momentum','Exchange')">Exch ↕</th>
-        <th onclick="sortTable('momentum','Direction')">Direction ↕</th>
+                <th onclick="sortTable('momentum','Direction')">Direction ↕</th>
         <th onclick="sortTable('momentum','Price')">Price ↕</th>
         <th onclick="sortTable('momentum','Score')">Score ↕</th>
         <th>Signals</th>
@@ -774,13 +715,13 @@
   TABS.forEach(t => dataStore[t] = []);
 
   const endpoints = {
-    pivot:        { load: '/api/scan',             refresh: '/api/refresh' },
-    darvas:       { load: '/api/darvas',            refresh: '/api/darvas/refresh' },
-    trendline:    { load: '/api/trendline',         refresh: '/api/trendline/refresh' },
-    breakout:     { load: '/api/breakout',          refresh: '/api/breakout/refresh' },
-    insidebar:    { load: '/api/insidebar',         refresh: '/api/insidebar/refresh' },
-    accumulation: { load: '/api/accumulation',      refresh: '/api/accumulation/refresh' },
-    momentum:     { load: '/api/momentum',          refresh: '/api/momentum/refresh' },
+    pivot:        { load: '/api/scan',           refresh: '/api/refresh' },
+    darvas:       { load: '/api/darvas',          refresh: '/api/darvas/refresh' },
+    trendline:    { load: '/api/trendline',       refresh: '/api/trendline/refresh' },
+    breakout:     { load: '/api/breakout',        refresh: '/api/breakout/refresh' },
+    insidebar:    { load: '/api/insidebar',       refresh: '/api/insidebar/refresh' },
+    accumulation: { load: '/api/accumulation',    refresh: '/api/accumulation/refresh' },
+    momentum:     { load: '/api/momentum',        refresh: '/api/momentum/refresh' },
   };
 
   function getExtraParams(scan) {
@@ -799,12 +740,11 @@
   }
 
   async function loadScan(scan) {
-    const exchange = document.getElementById(`${scan}-exchange`).value;
-    const fo_only  = document.getElementById(`${scan}-fo`).value;
-    const extra    = getExtraParams(scan);
+    const fo_only = document.getElementById(`${scan}-fo`).value;
+    const extra   = getExtraParams(scan);
     showState(scan, 'loading');
     try {
-      const res  = await fetch(`${endpoints[scan].load}?exchange=${exchange}&fo_only=${fo_only}${extra}`);
+      const res  = await fetch(`${endpoints[scan].load}?fo_only=${fo_only}${extra}`);
       const json = await res.json();
       dataStore[scan] = json.data || [];
       document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
@@ -816,12 +756,11 @@
   }
 
   async function refreshScan(scan) {
-    const exchange = document.getElementById(`${scan}-exchange`).value;
-    const fo_only  = document.getElementById(`${scan}-fo`).value;
-    const extra    = getExtraParams(scan);
+    const fo_only = document.getElementById(`${scan}-fo`).value;
+    const extra   = getExtraParams(scan);
     showState(scan, 'loading');
     try {
-      const res  = await fetch(`${endpoints[scan].refresh}?exchange=${exchange}&fo_only=${fo_only}${extra}`);
+      const res  = await fetch(`${endpoints[scan].refresh}?fo_only=${fo_only}${extra}`);
       const json = await res.json();
       dataStore[scan] = json.data || [];
       applyFilters(scan);
@@ -911,8 +850,8 @@
     }
 
     if (scan === 'accumulation') {
-      const signal  = document.getElementById('accumulation-signal').value;
-      const search  = document.getElementById('accumulation-search').value.trim().toUpperCase();
+      const signal = document.getElementById('accumulation-signal').value;
+      const search = document.getElementById('accumulation-search').value.trim().toUpperCase();
       data = data.filter(r =>
         (!signal || (r.Signals && r.Signals.includes(signal))) &&
         (!search || r.Symbol.includes(search))
@@ -920,10 +859,10 @@
     }
 
     if (scan === 'momentum') {
-      const rsiType  = document.getElementById('momentum-rsitype').value;
-      const macdType = document.getElementById('momentum-macdtype').value;
-      const agreeOnly= document.getElementById('momentum-agree').value === 'true';
-      const search   = document.getElementById('momentum-search').value.trim().toUpperCase();
+      const rsiType   = document.getElementById('momentum-rsitype').value;
+      const macdType  = document.getElementById('momentum-macdtype').value;
+      const agreeOnly = document.getElementById('momentum-agree').value === 'true';
+      const search    = document.getElementById('momentum-search').value.trim().toUpperCase();
       data = data.filter(r =>
         (!rsiType   || (r['RSI Type']    && r['RSI Type'].includes(rsiType))) &&
         (!macdType  || (r['MACD Signal'] && r['MACD Signal'].includes(macdType))) &&
@@ -957,6 +896,11 @@
     return `<span class="vol-cell ${cls}">${ratioStr}</span>`;
   }
 
+  function exCell(exchange) {
+    const cls = exchange === 'NSE' ? 'badge-nse' : 'badge-bse';
+    return `<span class="badge ${cls}">${exchange || ''}</span>`;
+  }
+
   function ibTriggerBadge(trigger) {
     const map = {
       'Breakout':  'badge-fresh-bo',
@@ -969,9 +913,7 @@
 
   function triggerBadge(trigger) {
     let cls = 'badge-breakout';
-    if      (trigger.includes('Gap Up'))          cls = 'badge-gap-up';
-    else if (trigger.includes('Gap Down'))         cls = 'badge-gap-down';
-    else if (trigger.includes('Fresh Breakout'))   cls = 'badge-fresh-bo';
+    if      (trigger.includes('Fresh Breakout'))   cls = 'badge-fresh-bo';
     else if (trigger.includes('Breakout'))         cls = 'badge-breakout';
     else if (trigger.includes('Fresh Breakdown'))  cls = 'badge-fresh-bd';
     else if (trigger.includes('Distribution'))     cls = 'badge-dist';
@@ -984,10 +926,10 @@
     if (!rsiType || rsiType === '-') return '<span style="color:#555">-</span>';
     return rsiType.split(' + ').map(t => {
       let cls = 'badge-confluence';
-      if      (t.includes('Bullish Divergence'))  cls = 'badge-rsi-bull';
-      else if (t.includes('Bearish Divergence'))  cls = 'badge-rsi-bear';
-      else if (t.includes('Hidden Bullish'))       cls = 'badge-rsi-hbull';
-      else if (t.includes('Hidden Bearish'))       cls = 'badge-rsi-hbear';
+      if      (t.includes('Bullish Divergence')) cls = 'badge-rsi-bull';
+      else if (t.includes('Bearish Divergence')) cls = 'badge-rsi-bear';
+      else if (t.includes('Hidden Bullish'))     cls = 'badge-rsi-hbull';
+      else if (t.includes('Hidden Bearish'))     cls = 'badge-rsi-hbear';
       return `<span class="badge ${cls}">${t}</span>`;
     }).join('');
   }
@@ -1026,17 +968,13 @@
       const isAttempt = r.Direction && r.Direction.includes('Attempt');
       const isBaby    = r.Direction && r.Direction.includes('Baby');
       const isMixed   = r.Direction && r.Direction.includes('Mixed');
-      const isGapUp   = r.Trigger  && r.Trigger.includes('Gap Up');
-      const isGapDown = r.Trigger  && r.Trigger.includes('Gap Down');
 
-      if      (isGapUp)   tr.classList.add('row-gap-up');
-      else if (isGapDown) tr.classList.add('row-gap-down');
-      else if (isShort)   tr.classList.add('row-short');
+      if      (isShort)   tr.classList.add('row-short');
       else if (isAttempt) tr.classList.add('row-attempt');
       else if (isBaby)    tr.classList.add('row-baby');
       else if (isMixed)   tr.classList.add('row-mixed');
 
-      const exBadge = `<span class="badge ${r.Exchange==='NSE'?'badge-nse':'badge-bse'}">${r.Exchange}</span>`;
+      const exBadge = exCell(r.Exchange);
       const vRatio  = volCell(r);
       const vRising = r['Vol Rising'] || '';
 
@@ -1051,7 +989,7 @@
         const narrowW = r['Narrow CPR (W)'] ? '✅ W' : '';
         const narrowM = r['Narrow CPR (M)'] ? '✅ M' : '';
         tr.innerHTML = `
-          <td><b>${r.Symbol}</b></td><td>${exBadge}</td><td>₹${r.Price}</td>
+          <td><b>${r.Symbol}</b></td><td>₹${r.Price}</td>
           <td>${setupBadges}</td>
           <td>${r['Weekly Hit']}</td><td>${r['Monthly Hit']}</td>
           <td>${[narrowW,narrowM].filter(Boolean).join(' ')}</td>
@@ -1062,13 +1000,13 @@
       }
 
       if (scan === 'darvas') {
-        const trigCls = r.Trigger==='Breakout'               ? 'badge-breakout'
-                      : r.Trigger==='Retest'                  ? 'badge-retest'
-                      : r.Trigger==='Distribution Breakdown'  ? 'badge-dist'
-                      : r.Trigger==='Breakdown Retest'        ? 'badge-retest'
+        const trigCls = r.Trigger==='Breakout'              ? 'badge-breakout'
+                      : r.Trigger==='Retest'                ? 'badge-retest'
+                      : r.Trigger==='Distribution Breakdown'? 'badge-dist'
+                      : r.Trigger==='Breakdown Retest'      ? 'badge-retest'
                       : 'badge-short';
         tr.innerHTML = `
-          <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
+          <td><b>${r.Symbol}</b></td>
           <td>${dirBadge(r.Direction)}</td>
           <td>${boxTypeBadge(r['Box Type'])}</td>
           <td>₹${r.Price}</td>
@@ -1084,7 +1022,7 @@
         const isHoriz    = r.Setup.includes('Horizontal');
         const setupBadge = `<span class="badge ${isHoriz?'badge-horiz':'badge-trendline'}">${r.Setup}</span>`;
         tr.innerHTML = `
-          <td><b>${r.Symbol}</b></td><td>${exBadge}</td><td>₹${r.Price}</td>
+          <td><b>${r.Symbol}</b></td><td>₹${r.Price}</td>
           <td>${setupBadge}</td>
           <td>₹${r.Level}</td>
           <td class="levels-cell">${r.Detail}</td>
@@ -1097,11 +1035,8 @@
         const tfBadge   = `<span class="badge ${isShort?'badge-short':'badge-breakout'}">${r.Timeframe}</span>`;
         const bothBadge = r['Both TF'] && r['Both TF'].includes('⭐')
           ? `<span class="badge badge-both">⭐ Both TF</span>` : '';
-        const gapBadge  = r['Gap %'] !== '' && r['Gap %'] != null
-          ? `<span class="badge ${r['Gap %'] > 0 ? 'badge-gap-up' : 'badge-gap-down'}">${r['Gap %']}%</span>`
-          : '-';
         tr.innerHTML = `
-          <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
+          <td><b>${r.Symbol}</b></td>
           <td>${dirBadge(r.Direction)}</td>
           <td>₹${r.Price}</td>
           <td>${triggerBadge(r.Trigger)}</td>
@@ -1109,7 +1044,6 @@
           <td class="levels-cell">${r.Level}</td>
           <td>${r['Move %']}%</td>
           <td>${bothBadge}</td>
-          <td>${gapBadge}</td>
           <td>${vRatio}</td><td>${vRising}</td>
         `;
       }
@@ -1120,12 +1054,12 @@
         const cfBadge   = r.Confluence
           ? `<span class="badge badge-confluence">⭐ ${r.Confluence}</span>` : '-';
         const tfBadge   = `<span class="badge ${
-          r.Trigger==='Breakout'  ? 'badge-fresh-bo'  :
-          r.Trigger==='Breakdown' ? 'badge-fresh-bd'  :
-          r.Trigger==='Attempt'   ? 'badge-attempt'   : 'badge-baby'
+          r.Trigger==='Breakout'  ? 'badge-fresh-bo' :
+          r.Trigger==='Breakdown' ? 'badge-fresh-bd' :
+          r.Trigger==='Attempt'   ? 'badge-attempt'  : 'badge-baby'
         }">${r.Timeframe}</span>`;
         tr.innerHTML = `
-          <td><b>${r.Symbol}</b></td><td>${exBadge}</td>
+          <td><b>${r.Symbol}</b></td>
           <td>${dirBadge(r.Direction)}</td>
           <td>₹${r.Price}</td>
           <td>${tfBadge}</td>
@@ -1149,7 +1083,7 @@
         ).join('');
         tr.innerHTML = `
           <td><b>${r.Symbol}</b></td>
-          <td>${exBadge}</td>
+          
           <td>₹${r.Price}</td>
           <td>${scoreBadge}</td>
           <td>${sigBadges}</td>
@@ -1176,7 +1110,7 @@
         }).join('');
         tr.innerHTML = `
           <td><b>${r.Symbol}</b></td>
-          <td>${exBadge}</td>
+          
           <td>${dirBadge(r.Direction)}</td>
           <td>₹${r.Price}</td>
           <td>${scoreBadge}</td>

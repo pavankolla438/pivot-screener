@@ -237,6 +237,36 @@ def get_bse_ohlc(date):
     print(f"[BSE] Done. Got {len(result)} stocks.")
     return result
 
+def get_all_ohlc(date):
+    """
+    Returns unified OHLC for all stocks.
+    NSE preferred for duplicates. BSE-only stocks added after.
+    Returns single DataFrame with 'exchange' column showing primary exchange.
+    """
+    nse_df = get_nse_ohlc(date)
+    bse_df = get_bse_ohlc(date)
+
+    if nse_df is None and bse_df is None:
+        return None
+    if nse_df is None:
+        bse_df['exchange'] = 'BSE'
+        return bse_df
+    if bse_df is None:
+        nse_df['exchange'] = 'NSE'
+        return nse_df
+
+    # NSE symbols take priority
+    nse_syms = set(nse_df['symbol'].str.upper())
+
+    # keep only BSE stocks not already in NSE
+    bse_only = bse_df[~bse_df['symbol'].str.upper().isin(nse_syms)].copy()
+    bse_only['exchange'] = 'BSE'
+    nse_df['exchange']   = 'NSE'
+
+    combined = pd.concat([nse_df, bse_only], ignore_index=True)
+    print(f"[All] Unified: {len(nse_df)} NSE + {len(bse_only)} BSE-only = {len(combined)} total")
+    return combined
+
 # ─────────────────────────────────────────
 # WEEKLY & MONTHLY OHLC AGGREGATION
 # ─────────────────────────────────────────
