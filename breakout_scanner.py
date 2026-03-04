@@ -4,9 +4,9 @@ from data_fetcher import get_last_trading_day
 from history_store import get_all_histories, get_swing_points
 from market_context import get_context
 
-LOOKBACK_BARS = 34
-SWING_WINDOW  = 3
-MAX_BREAK_PCT = 20.0
+LOOKBACK_BARS = 60
+SWING_WINDOW  = 7
+MAX_BREAK_PCT = 3.0
 GAP_PCT       = 2.0
 
 # ─────────────────────────────────────────
@@ -14,30 +14,37 @@ GAP_PCT       = 2.0
 # ─────────────────────────────────────────
 
 def get_swing_resistance(df, sym, exchange, interval):
-    _, high_idxs = get_swing_points(sym, exchange, interval)
-    hist         = df.iloc[:-1]
-    valid_idx    = [i for i in high_idxs if i < len(hist)]
+    high_idxs, _ = get_swing_points(sym, exchange, interval)
+    hist          = df.iloc[:-1]
+    curr_close    = float(df.iloc[-1]['close'])
+    valid_idx     = [i for i in high_idxs
+                     if i < len(hist)
+                     and float(hist['high'].iloc[i]) > curr_close * 1.001]
     if not valid_idx:
-        return float(hist['high'].max()) if not hist.empty else None
-    return float(hist['high'].iloc[valid_idx[-1]])
+        return None
+    levels = [(float(hist['high'].iloc[i]), i) for i in valid_idx]
+    levels.sort(key=lambda x: x[0])
+    return levels[0][0]
+
 
 def get_swing_support(df, sym, exchange, interval):
     _, low_idxs = get_swing_points(sym, exchange, interval)
-    hist        = df.iloc[:-1]
-    valid_idx   = [i for i in low_idxs if i < len(hist)]
+    hist         = df.iloc[:-1]
+    curr_close   = float(df.iloc[-1]['close'])
+    valid_idx    = [i for i in low_idxs
+                    if i < len(hist)
+                    and float(hist['low'].iloc[i]) < curr_close * 0.999]
     if not valid_idx:
-        return float(hist['low'].min()) if not hist.empty else None
-    return float(hist['low'].iloc[valid_idx[-1]])
+        return None
+    levels = [(float(hist['low'].iloc[i]), i) for i in valid_idx]
+    levels.sort(key=lambda x: x[0], reverse=True)
+    return levels[0][0]
 
 # ─────────────────────────────────────────
 # GAP DETECTION
 # ─────────────────────────────────────────
 
 def check_gap(df, daily_row):
-    """
-    Gap Up:   today open > yesterday close by GAP_PCT%+
-    Gap Down: today open < yesterday close by GAP_PCT%+
-    """
     if len(df) < 2:
         return None
     if 'open' not in daily_row.index:
@@ -46,13 +53,23 @@ def check_gap(df, daily_row):
     today_open  = float(daily_row['open'])
     today_close = float(daily_row['close'])
     prev_close  = float(df.iloc[-2]['close'])
+    prev_high   = float(df.iloc[-2]['high'])
+    prev_low    = float(df.iloc[-2]['low'])
 
-    if prev_close == 0:
+    if prev_close == 0 or today_open == 0:
         return None
 
+    # open must equal close for many bhavcopy entries — skip those
+    if today_open == today_close:
+        return None
+
+    # gap must be clean — open must be outside previous bar's range entirely
     gap_pct = (today_open - prev_close) / prev_close * 100
 
     if gap_pct >= GAP_PCT:
+        # open must be above previous high (true gap)
+        if today_open <= prev_high:
+            return None
         continuation = today_close >= today_open * 0.99
         return {
             'type':         'Gap Up',
@@ -60,6 +77,9 @@ def check_gap(df, daily_row):
             'continuation': '▲ Continuing' if continuation else '▼ Filling',
         }
     elif gap_pct <= -GAP_PCT:
+        # open must be below previous low (true gap)
+        if today_open >= prev_low:
+            return None
         continuation = today_close <= today_open * 1.01
         return {
             'type':         'Gap Down',
@@ -81,22 +101,23 @@ def scan_interval(histories, daily_map, exchange, interval, interval_label, dire
         if today is None:
             continue
 
-        today_high  = today['high']
-        today_low   = today['low']
+        today_close = float(today['close'])
+        today_high  = float(today['high'])
+        today_low   = float(today['low'])
 
         # ── LONG / BREAKOUT ──
         if direction in ('LONG', 'BOTH'):
             resistance = get_swing_resistance(df, sym, exchange, interval)
-            if resistance and today_high > resistance:
-                prev_high = float(df.iloc[-2]['high'])
-                if prev_high <= resistance:
+            if resistance and today_close > resistance:
+                prev_close = float(df.iloc[-2]['close'])
+                if prev_close <= resistance:
                     trigger = 'Fresh Breakout'
                 elif np.any(df.iloc[-4:-1]['close'].values < resistance):
                     trigger = 'Breakout'
                 else:
                     trigger = None
                 if trigger:
-                    pct = round((today_high - resistance) / resistance * 100, 2)
+                    pct = round((today_close - resistance) / resistance * 100, 2)
                     if pct <= MAX_BREAK_PCT:
                         hits.append({
                             'sym':      sym,
@@ -112,16 +133,16 @@ def scan_interval(histories, daily_map, exchange, interval, interval_label, dire
         # ── SHORT / BREAKDOWN ──
         if direction in ('SHORT', 'BOTH'):
             support = get_swing_support(df, sym, exchange, interval)
-            if support and today_low < support:
-                prev_low = float(df.iloc[-2]['low'])
-                if prev_low >= support:
+            if support and today_close < support:
+                prev_close = float(df.iloc[-2]['close'])
+                if prev_close >= support:
                     trigger = 'Fresh Breakdown'
                 elif np.any(df.iloc[-4:-1]['close'].values > support):
                     trigger = 'Breakdown'
                 else:
                     trigger = None
                 if trigger:
-                    pct = round((support - today_low) / support * 100, 2)
+                    pct = round((support - today_close) / support * 100, 2)
                     if pct <= MAX_BREAK_PCT:
                         hits.append({
                             'sym':      sym,
@@ -135,18 +156,18 @@ def scan_interval(histories, daily_map, exchange, interval, interval_label, dire
                         })
 
         # ── GAP CHECK ──
-        gap = check_gap(df, today)
-        if gap:
-            hits.append({
-                'sym':      sym,
-                'side':     'LONG' if gap['type'] == 'Gap Up' else 'SHORT',
-                'label':    interval_label,
-                'level':    round(float(df.iloc[-2]['close']), 2),
-                'move_pct': abs(gap['gap_pct']),
-                'trigger':  f"{gap['type']} {gap['continuation']}",
-                'is_gap':   True,
-                'gap_pct':  gap['gap_pct'],
-            })
+        #gap = check_gap(df, today)
+        #if gap:
+        #    hits.append({
+        #        'sym':      sym,
+        #        'side':     'LONG' if gap['type'] == 'Gap Up' else 'SHORT',
+        #        'label':    interval_label,
+        #        'level':    round(float(df.iloc[-2]['close']), 2),
+        #        'move_pct': abs(gap['gap_pct']),
+        #        'trigger':  f"{gap['type']} {gap['continuation']}",
+        #        'is_gap':   True,
+        #        'gap_pct':  gap['gap_pct'],
+        #    })
 
     return hits
 
@@ -154,7 +175,7 @@ def scan_interval(histories, daily_map, exchange, interval, interval_label, dire
 # MAIN SCAN
 # ─────────────────────────────────────────
 
-def run_breakout_scan(exchange='BOTH', direction='BOTH'):
+def run_breakout_scan(exchange='BOTH', direction='BOTH', min_vol_ratio=0.0):
     day = get_last_trading_day()
     print(f"\n=== Breakout/Breakdown Scan | {day} | Exchange: {exchange} | Direction: {direction} ===\n")
 
@@ -172,7 +193,7 @@ def run_breakout_scan(exchange='BOTH', direction='BOTH'):
             for _, row in ctx.daily.iterrows()
         }
 
-        all_hits = {}  # { (sym, side): [hits] }
+        all_hits = {}
 
         for interval, label in [('1d', 'Daily'), ('1wk', 'Weekly')]:
             histories = get_all_histories(exch, interval)
@@ -213,7 +234,12 @@ def run_breakout_scan(exchange='BOTH', direction='BOTH'):
     df['_sort'] = df['Both TF'].apply(lambda x: 0 if '⭐' in x else 1)
     df = df.sort_values(['Direction', '_sort', 'Move %'],
                         ascending=[True, True, False]).drop(columns=['_sort'])
+
+    if min_vol_ratio > 0:
+        df = df[pd.to_numeric(df['Vol Ratio'], errors='coerce') >= min_vol_ratio]
+
     return df.reset_index(drop=True)
+
 
 if __name__ == "__main__":
     import time
@@ -221,11 +247,16 @@ if __name__ == "__main__":
     from history_store import preload_histories
     day     = get_last_trading_day()
     symbols = get_nse_ohlc(day)['symbol'].tolist()
-    preload_histories(symbols, 'NSE', intervals=('1d', '1wk'), lookback_bars=60)
+    preload_histories(symbols, 'NSE', intervals=('1d', '1wk'), lookback_bars=252)
     t0      = time.time()
     results = run_breakout_scan(exchange='NSE', direction='BOTH')
     t1      = time.time()
     print(f"\nTime: {round(t1-t0, 1)}s — {len(results)} results")
     if not results.empty:
-        print(results[['Symbol','Exchange','Direction','Price',
-                        'Trigger','Timeframe','Move %','Both TF','Gap %']].to_string(index=False))
+        df = results
+        print(f"Long:  {len(df[df['Direction'].str.contains('Long',  na=False)])}")
+        print(f"Short: {len(df[df['Direction'].str.contains('Short', na=False)])}")
+        print(f"Gap:   {len(df[df['Trigger'].str.contains('Gap',     na=False)])}")
+        print(f"Fresh: {len(df[df['Trigger'].str.contains('Fresh',   na=False)])}")
+        print(df[['Symbol','Exchange','Direction','Price',
+                  'Trigger','Timeframe','Move %','Both TF','Gap %']].head(30).to_string(index=False))

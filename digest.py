@@ -10,6 +10,7 @@ GMAIL_USER     = os.environ.get('GMAIL_USER',     '')
 GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD', '')
 DIGEST_TO      = os.environ.get('DIGEST_TO',      '')
 
+MAX_CONFLUENCE_BONUS = 4
 
 # ─────────────────────────────────────────
 # PRELOAD ALL DATA
@@ -27,7 +28,7 @@ def preload_all(cache_ref):
         ctx = contexts.get(exch)
         if ctx and ctx.daily is not None:
             symbols = ctx.daily['symbol'].tolist()
-            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=120)
+            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=252)
             store_stats()
         print(f"[Digest] {exch} preload complete.")
 
@@ -42,13 +43,13 @@ def preload_all(cache_ref):
 
     print("[Digest] Warming scanner caches...")
     for scan_fn, kwargs, key in [
-        (run_scan,              {'exchange': 'BOTH'},                            'pivot_BOTH'),
-        (run_darvas_scan,       {'exchange': 'BOTH', 'direction': 'BOTH'},       'darvas_BOTH'),
-        (run_trendline_scan,    {'exchange': 'BOTH'},                            'trendline_BOTH'),
-        (run_breakout_scan,     {'exchange': 'BOTH', 'direction': 'BOTH'},       'breakout_BOTH'),
-        (run_inside_bar_scan,   {'exchange': 'BOTH', 'direction': 'BOTH', 'n': 2}, 'insidebar_BOTH_2'),
-        (run_accumulation_scan, {'exchange': 'BOTH', 'min_score': 1},            'accumulation_BOTH_1'),
-        (run_momentum_scan,     {'exchange': 'BOTH', 'min_score': 2},            'momentum_BOTH_2'),
+        (run_scan,              {'exchange': 'BOTH'},                                          'pivot_BOTH'),
+        (run_darvas_scan,       {'exchange': 'BOTH', 'direction': 'BOTH'},                     'darvas_BOTH'),
+        (run_trendline_scan,    {'exchange': 'BOTH'},                                          'trendline_BOTH'),
+        (run_breakout_scan,     {'exchange': 'BOTH', 'direction': 'BOTH', 'min_vol_ratio': 1.5}, 'breakout_BOTH'),
+        (run_inside_bar_scan,   {'exchange': 'BOTH', 'direction': 'BOTH', 'n': 2},            'insidebar_BOTH_2'),
+        (run_accumulation_scan, {'exchange': 'BOTH', 'min_score': 1, 'min_vol_ratio': 1.5},   'accumulation_BOTH_1'),
+        (run_momentum_scan,     {'exchange': 'BOTH', 'min_score': 2},                         'momentum_BOTH_2'),
     ]:
         try:
             df = scan_fn(**kwargs)
@@ -64,7 +65,7 @@ def preload_all(cache_ref):
 
 
 # ─────────────────────────────────────────
-# SCORING
+# PER-ROW BASE SCORES
 # ─────────────────────────────────────────
 
 def structure_score(r, scanner):
@@ -75,13 +76,11 @@ def structure_score(r, scanner):
         elif 'Near' in hit:      s += 1
         if r.get('Narrow CPR (W)') or r.get('Narrow CPR (M)'): s += 1
     elif scanner == 'Trendline':
-        setup = str(r.get('Setup', ''))
-        s += 2 if 'Horizontal' in setup else 1
+        s += 2 if 'Horizontal' in str(r.get('Setup', '')) else 1
     elif scanner == 'Darvas':
         s += 2
     elif scanner == 'Accumulation':
-        score = r.get('Score', 0) or 0
-        s += min(int(score), 2)
+        s += min(int(r.get('Score', 0) or 0), 2)
     return s
 
 
@@ -89,64 +88,150 @@ def trigger_score(r, scanner):
     s = 0
     trigger = str(r.get('Trigger', ''))
     if scanner == 'Breakout':
-        if 'Fresh' in trigger:          s += 2
-        elif 'Breakout' in trigger:     s += 1
-        elif 'Breakdown' in trigger:    s += 1
+        if 'Fresh' in trigger:        s += 2
+        elif 'Breakout' in trigger:   s += 1
+        elif 'Breakdown' in trigger:  s += 1
         if str(r.get('Both TF', '')).startswith('⭐'): s += 1
         try:
-            gap = abs(float(r.get('Gap %', 0) or 0))
-            if gap >= 2: s += 1
-        except:
-            pass
+            if abs(float(r.get('Gap %', 0) or 0)) >= 2: s += 1
+        except: pass
     elif scanner == 'Inside Bar':
-        if trigger == 'Breakout':       s += 2
-        elif trigger == 'Breakdown':    s += 2
-        elif trigger == 'Attempt':      s += 1
+        if trigger in ('Breakout', 'Breakdown'): s += 2
+        elif trigger == 'Attempt':               s += 1
         if str(r.get('Both TF', '')).startswith('⭐'): s += 1
     elif scanner == 'Darvas':
         if 'Fresh' in trigger or trigger == 'Breakout': s += 2
-        elif 'Retest' in trigger:       s += 1
+        elif 'Retest' in trigger:     s += 1
     elif scanner == 'Momentum':
-        if r.get('Agree') == '✅':      s += 2
-        score = r.get('Score', 0) or 0
-        if int(score) >= 3:             s += 1
+        if r.get('Agree') == '✅':    s += 2
+        if int(r.get('Score', 0) or 0) >= 3: s += 1
     elif scanner == 'Pivot':
-        setup = str(r.get('Setup', ''))
-        if 'Narrow CPR' in setup:       s += 1
+        if 'Narrow CPR' in str(r.get('Setup', '')): s += 1
     return s
 
 
 def momentum_score(r, scanner):
     s = 0
     if scanner == 'Momentum':
-        if r.get('Agree') == '✅':      s += 2
-        if r.get('Vol Spike') == '✅':  s += 1
-        rsi_type = str(r.get('RSI Type', ''))
-        if 'Bullish Divergence' in rsi_type or 'Bearish Divergence' in rsi_type:
-            s += 1
+        if r.get('Agree') == '✅':     s += 2
+        if r.get('Vol Spike') == '✅': s += 1
+        if any(x in str(r.get('RSI Type', ''))
+               for x in ('Bullish Divergence', 'Bearish Divergence')): s += 1
     elif scanner == 'Accumulation':
-        if r.get('OBV↑') == '✅':       s += 1
-        if r.get('Vol Spike') == '✅':  s += 1
+        if r.get('OBV↑') == '✅':      s += 1
+        if r.get('Vol Spike') == '✅': s += 1
     return s
 
 
 def vol_multiplier(r):
-    vr = r.get('Vol Ratio', 1) or 1
     try:
-        vr = float(vr)
+        vr = max(float(r.get('Vol Ratio', 1) or 1), 1.0)
     except:
         vr = 1.0
-    vr = max(vr, 1.0)
     return 1 + math.log(vr)
 
 
 # ─────────────────────────────────────────
-# PICK TOP SETUPS
+# CONFLUENCE TIER DETECTION
+# ─────────────────────────────────────────
+
+STRUCTURE_SCANNERS  = {'Pivot', 'Trendline', 'Darvas', 'Accumulation'}
+TRIGGER_SCANNERS    = {'Breakout', 'Inside Bar'}
+MOMENTUM_SCANNERS   = {'Momentum'}
+
+TIER1_PAIRS = [
+    {'Breakout', 'Momentum'},
+    {'Inside Bar', 'Breakout'},
+    {'Inside Bar', 'Momentum'},
+    {'Accumulation', 'Breakout'},
+    {'Trendline', 'Breakout'},
+    {'Darvas', 'Breakout'},
+    {'Pivot', 'Breakout'},
+]
+
+TIER2_PAIRS = [
+    {'Trendline', 'Momentum'},
+    {'Pivot', 'Momentum'},
+    {'Accumulation', 'Momentum'},
+    {'Darvas', 'Momentum'},
+    {'Inside Bar', 'Accumulation'},
+]
+
+TIER3_PAIRS = [
+    {'Trendline', 'Inside Bar'},
+    {'Pivot', 'Inside Bar'},
+    {'Pivot', 'Accumulation'},
+    {'Trendline', 'Accumulation'},
+    {'Darvas', 'Accumulation'},
+    {'Pivot', 'Darvas'},
+]
+
+SETUP_LABELS = [
+    ({'Breakout', 'Momentum'},        'Momentum Breakout'),
+    ({'Inside Bar', 'Breakout'},      'Compression Breakout'),
+    ({'Inside Bar', 'Momentum'},      'Compression Expansion'),
+    ({'Accumulation', 'Breakout'},    'Accumulation Breakout'),
+    ({'Trendline', 'Breakout'},       'Support Breakout'),
+    ({'Darvas', 'Breakout'},          'Box Breakout'),
+    ({'Pivot', 'Breakout'},           'Pivot Breakout'),
+    ({'Trendline', 'Momentum'},       'Trend Continuation'),
+    ({'Accumulation', 'Momentum'},    'Accumulation + Momentum'),
+    ({'Pivot', 'Momentum'},           'Pivot + Momentum'),
+    ({'Inside Bar', 'Accumulation'},  'Compression + Accumulation'),
+]
+
+FULL_STACK_LABEL = 'Full Stack Setup 🔥'
+
+
+def get_confluence_bonus(scanners_set):
+    has_structure = bool(scanners_set & STRUCTURE_SCANNERS)
+    has_trigger   = bool(scanners_set & TRIGGER_SCANNERS)
+    has_momentum  = bool(scanners_set & MOMENTUM_SCANNERS)
+    if has_structure and has_trigger and has_momentum:
+        return MAX_CONFLUENCE_BONUS
+    if len(scanners_set) >= 3:
+        return MAX_CONFLUENCE_BONUS
+
+    bonus = 0
+    for pair in TIER1_PAIRS:
+        if pair.issubset(scanners_set):
+            bonus = max(bonus, 3)
+    for pair in TIER2_PAIRS:
+        if pair.issubset(scanners_set):
+            bonus = max(bonus, 2)
+    for pair in TIER3_PAIRS:
+        if pair.issubset(scanners_set):
+            bonus = max(bonus, 1)
+
+    return min(bonus, MAX_CONFLUENCE_BONUS)
+
+
+def get_setup_label(scanners_set):
+    has_structure = bool(scanners_set & STRUCTURE_SCANNERS)
+    has_trigger   = bool(scanners_set & TRIGGER_SCANNERS)
+    has_momentum  = bool(scanners_set & MOMENTUM_SCANNERS)
+    if (has_structure and has_trigger and has_momentum) or len(scanners_set) >= 3:
+        return FULL_STACK_LABEL
+    for pair, label in SETUP_LABELS:
+        if pair.issubset(scanners_set):
+            return label
+    return list(scanners_set)[0] if scanners_set else ''
+
+
+def get_scanner_display(scanners_set):
+    order   = ['Accumulation', 'Trendline', 'Darvas', 'Pivot',
+               'Inside Bar', 'Breakout', 'Momentum']
+    ordered = [s for s in order if s in scanners_set]
+    return ' + '.join(ordered)
+
+
+# ─────────────────────────────────────────
+# MERGE-FIRST ARCHITECTURE
 # ─────────────────────────────────────────
 
 def pick_top_setups(cache_ref, top_n=10):
 
-    scanner_dfs = {
+    scanner_map = {
         'Pivot':        cache_ref.get('pivot_BOTH'),
         'Darvas':       cache_ref.get('darvas_BOTH'),
         'Trendline':    cache_ref.get('trendline_BOTH'),
@@ -157,79 +242,85 @@ def pick_top_setups(cache_ref, top_n=10):
     }
 
     all_rows = []
-
-    for scanner_name, df in scanner_dfs.items():
+    for scanner_name, df in scanner_map.items():
         if df is None or df.empty:
             continue
-        rows = df.copy()
-        rows['Scanner'] = scanner_name
-
-        scored = []
-        for _, r in rows.iterrows():
-            st    = structure_score(r, scanner_name)
-            tr    = trigger_score(r, scanner_name)
-            mo    = momentum_score(r, scanner_name)
-            base  = st + tr * 2 + mo
-            vm    = vol_multiplier(r)
-            final = base * vm
-            scored.append((final, st, tr, mo, r))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        for final, st, tr, mo, r in scored[:30]:
-            row = r.copy()
-            row['_final_score'] = round(final, 3)
-            row['_st']          = st
-            row['_tr']          = tr
-            row['_mo']          = mo
+        for _, r in df.iterrows():
+            row = dict(r)
+            row['_scanner'] = scanner_name
+            row['_st']      = structure_score(r, scanner_name)
+            row['_tr']      = trigger_score(r, scanner_name)
+            row['_mo']      = momentum_score(r, scanner_name)
+            base            = row['_st'] + row['_tr'] * 2 + row['_mo']
+            row['_base']    = base
+            row['_vm']      = vol_multiplier(r)
+            row['_raw']     = base * row['_vm']
             all_rows.append(row)
 
     if not all_rows:
         return pd.DataFrame()
 
-    all_df = pd.DataFrame(all_rows)
-    all_df = all_df.sort_values('_final_score', ascending=False)
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for row in all_rows:
+        key = (row.get('Symbol', ''), row.get('Exchange', ''))
+        groups[key].append(row)
 
-    # ── confluence bonus ──
-    symbol_scanners = {}
-    for _, r in all_df.iterrows():
-        sym = r.get('Symbol', '')
-        sc  = r.get('Scanner', '')
-        if sym not in symbol_scanners:
-            symbol_scanners[sym] = set()
-        symbol_scanners[sym].add(sc)
+    merged = []
+    for (sym, exch), rows in groups.items():
+        scanners_set = {r['_scanner'] for r in rows}
 
-    def confluence_bonus(sym):
-        scanners      = symbol_scanners.get(sym, set())
-        n             = len(scanners)
-        has_structure = bool(scanners & {'Pivot', 'Trendline', 'Darvas', 'Accumulation'})
-        has_trigger   = bool(scanners & {'Breakout', 'Inside Bar'})
-        has_momentum  = bool(scanners & {'Momentum'})
-        lifecycle     = sum([has_structure, has_trigger, has_momentum])
-        if lifecycle == 3: return 5
-        if lifecycle == 2: return 2
-        if n >= 3:         return 3
-        if n == 2:         return 1
-        return 0
+        best_per_scanner = {}
+        for r in rows:
+            sc = r['_scanner']
+            if sc not in best_per_scanner or r['_raw'] > best_per_scanner[sc]['_raw']:
+                best_per_scanner[sc] = r
 
-    all_df['_confluence'] = all_df['Symbol'].apply(confluence_bonus)
-    all_df['_total']      = all_df['_final_score'] + all_df['_confluence']
-    all_df = all_df.sort_values('_total', ascending=False)
+        rep        = max(best_per_scanner.values(), key=lambda r: r['_raw'])
+        total_base = sum(r['_base'] for r in best_per_scanner.values())
+        vm         = rep['_vm']
+        raw_score  = total_base * vm
+        conf_bonus  = get_confluence_bonus(scanners_set)
+        final_score = raw_score + conf_bonus
 
-    # ── guaranteed 1 slot per scanner, fill rest globally ──
+        merged.append({
+            'Symbol':           sym,
+            'Exchange':         exch,
+            'Price':            rep.get('Price', ''),
+            'Direction':        rep.get('Direction', ''),
+            'Vol Ratio':        rep.get('Vol Ratio', ''),
+            'Signals':          rep.get('Signals', rep.get('Trigger', rep.get('Setup', ''))),
+            'Both TF':          rep.get('Both TF', ''),
+            '_scanners':        scanners_set,
+            '_scanner_display': get_scanner_display(scanners_set),
+            '_setup_label':     get_setup_label(scanners_set),
+            '_confluence':      conf_bonus,
+            '_raw':             round(raw_score, 3),
+            '_total':           round(final_score, 3),
+            '_st':              sum(r['_st'] for r in best_per_scanner.values()),
+            '_tr':              sum(r['_tr'] for r in best_per_scanner.values()),
+            '_mo':              sum(r['_mo'] for r in best_per_scanner.values()),
+            '_n_scanners':      len(scanners_set),
+        })
+
+    merged_df = pd.DataFrame(merged)
+    merged_df  = merged_df.sort_values('_total', ascending=False)
+
     seen     = set()
     reserved = {}
+    for _, row in merged_df.iterrows():
+        sym      = row['Symbol']
+        scanners = row['_scanners']
+        for cat, cat_set in [('structure', STRUCTURE_SCANNERS),
+                              ('trigger',   TRIGGER_SCANNERS),
+                              ('momentum',  MOMENTUM_SCANNERS)]:
+            if cat not in reserved and bool(scanners & cat_set) and sym not in seen:
+                reserved[cat] = row
+                seen.add(sym)
 
-    for _, row in all_df.iterrows():
-        sym = row.get('Symbol', '')
-        sc  = row.get('Scanner', '')
-        if sc not in reserved and sym not in seen:
-            reserved[sc] = row
-            seen.add(sym)
-
-    # fill remaining slots
     top = []
-    for _, row in all_df.iterrows():
-        sym = row.get('Symbol', '')
+    for _, row in merged_df.iterrows():
+        sym = row['Symbol']
         if sym not in seen:
             seen.add(sym)
             top.append(row)
@@ -252,42 +343,57 @@ def build_email_html(top_df, day):
 
     rows_html = ''
     for _, r in top_df.iterrows():
-        direction = str(r.get('Direction', '')) if pd.notna(r.get('Direction')) else '—'
-        color = '#00cc66' if 'Long' in direction else '#ff4444' if 'Short' in direction else '#888888'
-        scanner   = r.get('Scanner', '')
-        symbol    = r.get('Symbol', '')
-        exchange  = r.get('Exchange', '')
-        price     = r.get('Price', '')
-        signals   = str(r.get('Signals', r.get('Trigger', r.get('Setup', '-'))))
-        vol_ratio = r.get('Vol Ratio', '')
-        vol_str   = f"{vol_ratio:.1f}x" if isinstance(vol_ratio, float) else str(vol_ratio or '-')
-        conf      = r.get('_confluence', 0)
-        total     = r.get('_total', '')
-        score_str = f"{round(float(total), 1)}{'  🔗' if conf > 0 else ''}" if total != '' else ''
+        direction = str(r.get('Direction', ''))
+        if pd.isna(r.get('Direction')) or not direction or direction == 'nan':
+            direction = '—'
+        color = '#00cc66' if 'Long'  in direction else \
+                '#ff4444' if 'Short' in direction else '#888888'
+
+        symbol        = r.get('Symbol', '')
+        exchange      = r.get('Exchange', '')
+        price         = r.get('Price', '')
+        scanner_disp  = r.get('_scanner_display', '')
+        setup_label   = r.get('_setup_label', '')
+        conf          = r.get('_confluence', 0)
+        total         = r.get('_total', '')
+        n_sc          = r.get('_n_scanners', 1)
+        vol_ratio     = r.get('Vol Ratio', '')
+        vol_str       = f"{vol_ratio:.1f}x" if isinstance(vol_ratio, float) else str(vol_ratio or '-')
+        both_tf       = '⭐ Both TF' if str(r.get('Both TF', '')).startswith('⭐') else ''
+        score_str     = f"{round(float(total), 1)}" if total != '' else ''
+        conf_badge    = f'<span style="color:#ffcc44;font-size:0.75rem;">🔗 +{conf}</span>' \
+                        if conf > 0 else ''
+        sc_color  = '#00ffcc' if n_sc >= 3 else '#7c83fd' if n_sc == 2 else '#666'
+        sc_weight = '700' if n_sc >= 2 else '400'
 
         rows_html += f"""
         <tr style="border-bottom:1px solid #1e2130;">
-          <td style="padding:10px 14px; font-weight:700; color:#e0e0e0;">{symbol}</td>
-          <td style="padding:10px 14px; color:#888; font-size:0.85rem;">{exchange}</td>
-          <td style="padding:10px 14px;">
-            <span style="background:#1a1d2e; color:#7c83fd; padding:2px 8px;
-                         border-radius:4px; font-size:0.8rem; font-weight:600;">{scanner}</span>
+          <td style="padding:12px 14px;">
+            <div style="font-weight:700;color:#e0e0e0;font-size:0.95rem;">{symbol}</div>
+            <div style="font-size:0.75rem;color:#555;margin-top:2px;">{exchange}</div>
           </td>
-          <td style="padding:10px 14px;">
-            <span style="color:{color}; font-weight:700;">{direction}</span>
+          <td style="padding:12px 14px;">
+            <div style="color:{sc_color};font-weight:{sc_weight};font-size:0.82rem;">{scanner_disp}</div>
+            <div style="color:#ffaa44;font-size:0.75rem;margin-top:3px;font-style:italic;">{setup_label}</div>
           </td>
-          <td style="padding:10px 14px; color:#e0e0e0;">₹{price}</td>
-          <td style="padding:10px 14px; color:#ffdd44; font-size:0.82rem;">{signals[:60]}</td>
-          <td style="padding:10px 14px; color:#ffaa44; font-weight:600;">{vol_str}</td>
-          <td style="padding:10px 14px; text-align:center; color:#aaa;">{score_str}</td>
+          <td style="padding:12px 14px;">
+            <span style="color:{color};font-weight:700;">{direction}</span>
+          </td>
+          <td style="padding:12px 14px;color:#e0e0e0;">₹{price}</td>
+          <td style="padding:12px 14px;color:#ffaa44;font-weight:600;">{vol_str}</td>
+          <td style="padding:12px 14px;">
+            <div style="color:#aaa;font-weight:700;font-size:0.95rem;">{score_str}</div>
+            <div style="margin-top:2px;">{conf_badge} {both_tf}</div>
+          </td>
         </tr>
         """
 
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e0e0e0;">
-  <div style="max-width:900px;margin:0 auto;padding:24px;">
+<body style="margin:0;padding:0;background:#0f1117;
+             font-family:'Segoe UI',sans-serif;color:#e0e0e0;">
+  <div style="max-width:860px;margin:0 auto;padding:24px;">
 
     <div style="background:#1a1d2e;border-radius:12px;padding:24px 32px;
                 border:1px solid #2a2d3e;margin-bottom:24px;">
@@ -295,7 +401,7 @@ def build_email_html(top_df, day):
         📊 Stock Screener — Daily Digest
       </h1>
       <p style="color:#666;margin:0;font-size:0.9rem;">
-        {day} &nbsp;|&nbsp; Top setups across all scanners &nbsp;|&nbsp; NSE + BSE
+        {day} &nbsp;|&nbsp; Cross-scanner confluence ranking &nbsp;|&nbsp; NSE + BSE
       </p>
     </div>
 
@@ -304,14 +410,18 @@ def build_email_html(top_df, day):
       <table style="width:100%;border-collapse:collapse;">
         <thead>
           <tr style="background:#13151f;border-bottom:2px solid #2a2d3e;">
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Symbol</th>
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Exch</th>
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Scanner</th>
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Direction</th>
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Price</th>
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Signals</th>
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Vol Ratio</th>
-            <th style="padding:12px 14px;color:#7c83fd;text-align:left;font-size:0.82rem;">Score</th>
+            <th style="padding:12px 14px;color:#7c83fd;text-align:left;
+                       font-size:0.82rem;width:120px;">Symbol</th>
+            <th style="padding:12px 14px;color:#7c83fd;text-align:left;
+                       font-size:0.82rem;">Scanners / Setup</th>
+            <th style="padding:12px 14px;color:#7c83fd;text-align:left;
+                       font-size:0.82rem;">Direction</th>
+            <th style="padding:12px 14px;color:#7c83fd;text-align:left;
+                       font-size:0.82rem;">Price</th>
+            <th style="padding:12px 14px;color:#7c83fd;text-align:left;
+                       font-size:0.82rem;">Vol</th>
+            <th style="padding:12px 14px;color:#7c83fd;text-align:left;
+                       font-size:0.82rem;">Score</th>
           </tr>
         </thead>
         <tbody>{rows_html}</tbody>
@@ -319,10 +429,22 @@ def build_email_html(top_df, day):
     </div>
 
     <div style="background:#13151f;border-radius:8px;padding:12px 16px;
-                border:1px solid #2a2d3e;margin-bottom:16px;font-size:0.78rem;color:#666;">
+                border:1px solid #2a2d3e;margin-bottom:16px;
+                font-size:0.78rem;color:#666;line-height:1.8;">
       <b style="color:#7c83fd;">How scores work:</b>
-      &nbsp; Score = (Structure + Trigger×2 + Momentum) × log(Vol Ratio)
-      &nbsp;|&nbsp; 🔗 = appears in multiple scanners (confluence bonus)
+      &nbsp; (Structure + Trigger×2 + Momentum) × log(Vol Ratio) + Confluence Bonus
+      <br>
+      <b style="color:#7c83fd;">Confluence tiers:</b>
+      &nbsp; Full Stack 🔥 +4 &nbsp;|&nbsp;
+      Tier 1 (Breakout+Momentum etc.) +3 &nbsp;|&nbsp;
+      Tier 2 (Structure+Momentum) +2 &nbsp;|&nbsp;
+      Tier 3 +1 &nbsp;|&nbsp; max +4
+      <br>
+      <b style="color:#7c83fd;">Scanner colors:</b>
+      &nbsp;
+      <span style="color:#00ffcc;">Cyan = 3+ scanners</span> &nbsp;|&nbsp;
+      <span style="color:#7c83fd;">Purple = 2 scanners</span> &nbsp;|&nbsp;
+      <span style="color:#666;">Grey = single scanner</span>
     </div>
 
     <p style="color:#444;font-size:0.78rem;margin-top:16px;text-align:center;">
@@ -378,9 +500,11 @@ def run_daily_digest(cache_ref):
         top_df = pick_top_setups(cache_ref, top_n=10)
         print(f"[Digest] Top setups: {len(top_df)}")
         if not top_df.empty:
-            print(top_df[['Symbol', 'Exchange', 'Scanner', 'Direction',
-                           'Price', '_st', '_tr', '_mo',
-                           '_confluence', '_total']].to_string(index=False))
+            print(top_df[[
+                'Symbol', 'Exchange', '_scanner_display', '_setup_label',
+                'Direction', 'Price', '_st', '_tr', '_mo',
+                '_confluence', '_n_scanners', '_total'
+            ]].to_string(index=False))
         send_digest_email(top_df, day)
     except Exception as e:
         print(f"[Digest] Error: {e}")

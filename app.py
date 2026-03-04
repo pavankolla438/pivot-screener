@@ -194,7 +194,7 @@ def ensure_preloaded(exchange):
         ctx = contexts.get(exch)
         if ctx and ctx.daily is not None:
             symbols = ctx.daily['symbol'].tolist()
-            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=120)
+            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=252)
             store_stats()
 
         _preloaded.add(key)

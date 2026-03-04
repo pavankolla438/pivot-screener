@@ -42,7 +42,7 @@ def _build_index(exchange, interval):
 # the reset-index DataFrames in _index.
 # ─────────────────────────────────────────
 
-def _build_swing_cache(exchange, interval, window=3):
+def _build_swing_cache(exchange, interval, window=5, min_prominence_pct=0.5):
     global _swing_cache
     key      = f"{exchange}_{interval}"
     combined = _store.get(exchange, {}).get(interval)
@@ -57,7 +57,6 @@ def _build_swing_cache(exchange, interval, window=3):
     cache = {}
 
     for sym, grp in combined.groupby('_sym', sort=False):
-        # reset_index so positions match the per-symbol df in _index
         g     = grp.drop(columns=['_sym']).reset_index(drop=True)
         highs = pd.to_numeric(g['high'], errors='coerce')
         lows  = pd.to_numeric(g['low'],  errors='coerce')
@@ -65,9 +64,38 @@ def _build_swing_cache(exchange, interval, window=3):
         roll_max = highs.rolling(win, center=True, min_periods=win).max()
         roll_min = lows.rolling(win,  center=True, min_periods=win).min()
 
+        raw_high_idxs = list(highs.index[highs == roll_max])
+        raw_low_idxs  = list(lows.index[lows   == roll_min])
+
+        # prominence filter — swing high must be min_prominence_pct% above
+        # the average of surrounding bars
+        min_prom = min_prominence_pct / 100.0
+
+        filtered_highs = []
+        for i in raw_high_idxs:
+            left  = max(0, i - window)
+            right = min(len(highs), i + window + 1)
+            surround = [highs.iloc[j] for j in range(left, right) if j != i]
+            if not surround:
+                continue
+            avg = sum(surround) / len(surround)
+            if avg > 0 and (highs.iloc[i] - avg) / avg >= min_prom:
+                filtered_highs.append(i)
+
+        filtered_lows = []
+        for i in raw_low_idxs:
+            left  = max(0, i - window)
+            right = min(len(lows), i + window + 1)
+            surround = [lows.iloc[j] for j in range(left, right) if j != i]
+            if not surround:
+                continue
+            avg = sum(surround) / len(surround)
+            if avg > 0 and (avg - lows.iloc[i]) / avg >= min_prom:
+                filtered_lows.append(i)
+
         cache[sym] = {
-            'swing_high_idxs': list(highs.index[highs == roll_max]),
-            'swing_low_idxs':  list(lows.index[lows   == roll_min]),
+            'swing_high_idxs': filtered_highs,
+            'swing_low_idxs':  filtered_lows,
         }
 
     _swing_cache[key] = cache
@@ -93,7 +121,7 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                     _build_index(exchange, interval)
                 key = f"{exchange}_{interval}"
                 if key not in _swing_cache:
-                    _build_swing_cache(exchange, interval)
+                    _build_swing_cache(exchange, interval, window=7, min_prominence_pct=2.0)
                 continue
 
         # Try bulk parquet
@@ -145,7 +173,7 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                 _store[exchange][interval] = None
 
         _build_index(exchange, interval)
-        _build_swing_cache(exchange, interval)
+        _build_swing_cache(exchange, interval, window=7, min_prominence_pct=2.0)
 
         if _store[exchange][interval] is not None:
             valid = _store[exchange][interval]['_sym'].nunique()
