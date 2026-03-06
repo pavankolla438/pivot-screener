@@ -242,7 +242,7 @@ def get_setup_label(scanners_set):
     for pair, label in SETUP_LABELS:
         if pair.issubset(scanners_set):
             return label
-    return list(scanners_set)[0] if scanners_set else ''
+    return get_scanner_display(scanners_set) if scanners_set else ''
 
 
 def get_scanner_display(scanners_set):
