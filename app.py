@@ -280,7 +280,7 @@ def api_momentum_refresh():
 
 @app.route('/api/top10')
 def api_top10():
-    ensure_preloaded()
+    # No ensure_preloaded() here — run_digest_scan() handles its own preload internally
     if 'top10' not in _cache:
         from digest import run_digest_scan
         df = run_digest_scan()
