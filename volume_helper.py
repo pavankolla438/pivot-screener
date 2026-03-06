@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from data_fetcher import get_last_trading_day, get_nse_ohlc, get_bse_ohlc
+from data_fetcher import get_last_trading_day, get_nse_ohlc
 from history_store import _store
 
 VOL_AVG_PERIOD = 21
