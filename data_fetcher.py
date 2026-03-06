@@ -2,7 +2,7 @@ import os
 import requests
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import zipfile
 import io
 
@@ -17,44 +17,114 @@ NSE_HEADERS = {
 }
 
 # ─────────────────────────────────────────
+# NSE HOLIDAYS  (update every January)
+# Source: https://www.nseindia.com/resources/exchange-communication-holidays
+# ─────────────────────────────────────────
+
+NSE_HOLIDAYS = {
+    # 2024
+    date(2024, 1, 22),  # Ram Mandir consecration (special closure)
+    date(2024, 1, 26),  # Republic Day
+    date(2024, 3, 25),  # Holi
+    date(2024, 3, 29),  # Good Friday
+    date(2024, 4, 14),  # Dr. Ambedkar Jayanti
+    date(2024, 4, 17),  # Ram Navami
+    date(2024, 4, 21),  # Mahavir Jayanti
+    date(2024, 5, 23),  # Buddha Purnima
+    date(2024, 6, 17),  # Bakri Eid
+    date(2024, 7, 17),  # Muharram
+    date(2024, 8, 15),  # Independence Day
+    date(2024, 10, 2),  # Gandhi Jayanti
+    date(2024, 10, 14), # Dussehra
+    date(2024, 11, 1),  # Diwali Laxmi Puja
+    date(2024, 11, 15), # Gurunanak Jayanti
+    date(2024, 12, 25), # Christmas
+
+    # 2025
+    date(2025, 2, 26),  # Mahashivratri
+    date(2025, 3, 14),  # Holi
+    date(2025, 3, 31),  # Id-Ul-Fitr (Ramzan Eid)
+    date(2025, 4, 10),  # Shri Ram Navami
+    date(2025, 4, 14),  # Dr. Ambedkar Jayanti
+    date(2025, 4, 18),  # Good Friday
+    date(2025, 5, 1),   # Maharashtra Day
+    date(2025, 8, 15),  # Independence Day
+    date(2025, 8, 27),  # Ganesh Chaturthi
+    date(2025, 10, 2),  # Gandhi Jayanti
+    date(2025, 10, 21), # Diwali Laxmi Puja
+    date(2025, 10, 22), # Diwali Balipratipada
+    date(2025, 11, 5),  # Gurunanak Jayanti
+    date(2025, 12, 25), # Christmas
+
+    # 2026
+    date(2026, 1, 26),  # Republic Day
+    date(2026, 2, 17),  # Mahashivratri
+    date(2026, 3, 20),  # Holi
+    date(2026, 4, 2),   # Shri Ram Navami
+    date(2026, 4, 3),   # Good Friday
+    date(2026, 4, 14),  # Dr. Ambedkar Jayanti
+    date(2026, 5, 1),   # Maharashtra Day
+    date(2026, 9, 16),  # Ganesh Chaturthi (approx)
+    date(2026, 10, 2),  # Gandhi Jayanti
+    date(2026, 10, 29), # Diwali Laxmi Puja (approx)
+    date(2026, 11, 24), # Gurunanak Jayanti (approx)
+    date(2026, 12, 25), # Christmas
+}
+
+
+def is_trading_day(d: date) -> bool:
+    """Return True if d is a weekday and not an NSE holiday."""
+    return d.weekday() < 5 and d not in NSE_HOLIDAYS
+
+
+# ─────────────────────────────────────────
 # DATE HELPERS
 # ─────────────────────────────────────────
 
+# Cache so we never compute this twice in the same process
+_last_trading_day_cache = None
+
 def get_last_trading_day():
     """
-    Returns most recent trading day for which Bhavcopy is available.
-    Falls back up to 5 days if today's file isn't published yet.
+    Returns most recent NSE trading day for which bhavcopy data is available.
+
+    Logic:
+      1. If a cached bhavcopy CSV exists for a candidate day → confirmed, use it.
+      2. If no cache exists for today → today's file not published yet (pre-3:30 PM IST)
+         → skip today and return the previous trading day.
+      3. Pure local check — zero HTTP calls.
     """
-    for days_back in range(0, 6):
-        candidate = datetime.today() - timedelta(days=days_back)
-        if candidate.weekday() >= 5:
+    global _last_trading_day_cache
+    if _last_trading_day_cache is not None:
+        return _last_trading_day_cache
+
+    today     = datetime.today().date()
+    candidate = today
+
+    for _ in range(14):
+        if not is_trading_day(candidate):
+            candidate -= timedelta(days=1)
             continue
-        date_str   = candidate.strftime("%Y%m%d")
-        cache_path = os.path.join(DATA_DIR, f"nse_bhav_{date_str}.csv")
+
+        cache_path = os.path.join(DATA_DIR, f"nse_bhav_{candidate.strftime('%Y%m%d')}.csv")
 
         if os.path.exists(cache_path):
-            return candidate.date()
+            # Bhavcopy already downloaded — confirmed available
+            _last_trading_day_cache = candidate
+            return _last_trading_day_cache
 
-        filename = f"BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
-        url      = f"https://nsearchives.nseindia.com/content/cm/{filename}"
-        try:
-            r = requests.get(url, headers=NSE_HEADERS, timeout=15)
-            if r.status_code == 200:
-                with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-                    csv_name = z.namelist()[0]
-                    with z.open(csv_name) as f:
-                        df = pd.read_csv(f)
-                df.to_csv(cache_path, index=False)
-                print(f"[NSE] Downloaded Bhavcopy for {candidate.date()}")
-                return candidate.date()
-            else:
-                print(f"[NSE] Bhavcopy not available for {candidate.date()} "
-                      f"(HTTP {r.status_code}), trying previous day...")
-        except Exception as e:
-            print(f"[NSE] Error fetching {candidate.date()}: {e}")
+        if candidate < today:
+            # Past trading day with no cache yet — bhavcopy will be downloaded
+            # by market_context/download_nse_bhavcopy on first use
+            _last_trading_day_cache = candidate
+            return _last_trading_day_cache
 
-    print("[NSE] Could not find Bhavcopy for last 5 trading days.")
-    return None
+        # candidate == today and no cache → bhavcopy not published yet
+        # fall back to previous day
+        candidate -= timedelta(days=1)
+
+    raise RuntimeError("Could not determine last trading day in the past 14 days.")
+
 
 def get_previous_week_range():
     today = datetime.today().date()
@@ -109,13 +179,13 @@ def get_nse_ohlc(date):
         return None
     df.columns = df.columns.str.strip()
     col_map = {
-        'TradDt':   'date',
-        'TckrSymb': 'symbol',
-        'OpnPric':  'open',
-        'HghPric':  'high',
-        'LwPric':   'low',
-        'ClsPric':  'close',
-        'SctySrs':  'series',
+        'TradDt':      'date',
+        'TckrSymb':    'symbol',
+        'OpnPric':     'open',
+        'HghPric':     'high',
+        'LwPric':      'low',
+        'ClsPric':     'close',
+        'SctySrs':     'series',
         'TtlTradgVol': 'volume',
     }
     df = df.rename(columns=col_map)
@@ -170,19 +240,19 @@ def get_bse_ohlc(date):
     total_batches = (len(tickers) + BSE_BATCH_SIZE - 1) // BSE_BATCH_SIZE
 
     for batch_num in range(total_batches):
-        batch_tickers  = tickers[batch_num * BSE_BATCH_SIZE:(batch_num + 1) * BSE_BATCH_SIZE]
-        batch_symbols  = symbols[batch_num * BSE_BATCH_SIZE:(batch_num + 1) * BSE_BATCH_SIZE]
+        batch_tickers = tickers[batch_num * BSE_BATCH_SIZE:(batch_num + 1) * BSE_BATCH_SIZE]
+        batch_symbols = symbols[batch_num * BSE_BATCH_SIZE:(batch_num + 1) * BSE_BATCH_SIZE]
 
         try:
             raw = yf.download(
-                tickers   = batch_tickers,
-                start     = start_str,
-                end       = end_str,
-                interval  = '1d',
-                group_by  = 'ticker',
+                tickers     = batch_tickers,
+                start       = start_str,
+                end         = end_str,
+                interval    = '1d',
+                group_by    = 'ticker',
                 auto_adjust = True,
-                progress  = False,
-                threads   = True,
+                progress    = False,
+                threads     = True,
             )
 
             if raw.empty:
@@ -190,8 +260,7 @@ def get_bse_ohlc(date):
 
             # Handle single vs multi ticker response
             if len(batch_tickers) == 1:
-                ticker = batch_tickers[0]
-                sym    = batch_symbols[0]
+                sym = batch_symbols[0]
                 if not raw.empty:
                     row = raw.iloc[0]
                     records.append({
@@ -255,10 +324,7 @@ def get_all_ohlc(date):
         nse_df['exchange'] = 'NSE'
         return nse_df
 
-    # NSE symbols take priority
     nse_syms = set(nse_df['symbol'].str.upper())
-
-    # keep only BSE stocks not already in NSE
     bse_only = bse_df[~bse_df['symbol'].str.upper().isin(nse_syms)].copy()
     bse_only['exchange'] = 'BSE'
     nse_df['exchange']   = 'NSE'
@@ -285,7 +351,7 @@ def get_weekly_ohlc_nse():
     frames  = []
     current = start
     while current <= end:
-        if current.weekday() < 5:
+        if is_trading_day(current):
             df = get_nse_ohlc(current)
             if df is not None:
                 frames.append(df)
@@ -300,7 +366,7 @@ def get_monthly_ohlc_nse():
     frames  = []
     current = start
     while current <= end:
-        if current.weekday() < 5:
+        if is_trading_day(current):
             df = get_nse_ohlc(current)
             if df is not None:
                 frames.append(df)
@@ -315,7 +381,7 @@ def get_weekly_ohlc_bse():
     frames  = []
     current = start
     while current <= end:
-        if current.weekday() < 5:
+        if is_trading_day(current):
             df = get_bse_ohlc(current)
             if df is not None:
                 frames.append(df)
@@ -330,7 +396,7 @@ def get_monthly_ohlc_bse():
     frames  = []
     current = start
     while current <= end:
-        if current.weekday() < 5:
+        if is_trading_day(current):
             df = get_bse_ohlc(current)
             if df is not None:
                 frames.append(df)
@@ -353,7 +419,7 @@ def get_fo_symbols():
             print(f"[F&O] Loaded {len(df)} symbols from cache.")
             return set(df['symbol'].tolist())
 
-    url     = "https://nsearchives.nseindia.com/content/fo/fo_mktlots.csv"
+    url = "https://nsearchives.nseindia.com/content/fo/fo_mktlots.csv"
     try:
         print("[F&O] Downloading F&O stock list from NSE...")
         r = requests.get(url, headers=NSE_HEADERS, timeout=15)
@@ -389,8 +455,20 @@ def get_fo_symbols():
 if __name__ == "__main__":
     import time
 
+    print("Testing get_last_trading_day() — should be instant (no HTTP):")
+    t0 = time.perf_counter()
     day = get_last_trading_day()
-    print(f"Last trading day: {day}")
+    t1 = time.perf_counter()
+    print(f"  Last trading day: {day}  ({(t1-t0)*1000:.2f} ms)")
+
+    t2 = time.perf_counter()
+    day2 = get_last_trading_day()
+    t3 = time.perf_counter()
+    print(f"  Second call (cache): {day2}  ({(t3-t2)*1000:.3f} ms)")
+
+    print(f"\nIs 2026-01-26 trading? {is_trading_day(date(2026, 1, 26))}  (expect False — Republic Day)")
+    print(f"Is 2026-01-27 trading? {is_trading_day(date(2026, 1, 27))}  (expect True)")
+    print(f"Is 2026-01-25 trading? {is_trading_day(date(2026, 1, 25))}  (expect False — Sunday)")
 
     print("\n=== Testing NSE Daily ===")
     df_nse = get_nse_ohlc(day)

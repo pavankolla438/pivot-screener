@@ -144,6 +144,8 @@
   .badge-macd-bull  { background: #0a4a1a; color: #00ff88; }
   .badge-macd-bear  { background: #4a0a0a; color: #ff4444; }
   .badge-mixed      { background: #2a2a00; color: #ffdd44; }
+  .badge-scanner    { background: #1a1a3a; color: #8888ff; }
+  .badge-rank       { background: #2a1a00; color: #ffaa44; font-size: 0.8rem; min-width: 28px; text-align: center; }
 
   .levels-cell { font-size: 0.75rem; color: #888; line-height: 1.6; }
   .levels-cell b { color: #aaa; }
@@ -169,6 +171,93 @@
   tr.row-gap-down:hover{ background: #2a1414; }
   tr.row-mixed         { background: #1e1e10; }
   tr.row-mixed:hover   { background: #2a2a14; }
+
+  /* ── Top 10 layout ── */
+  .top10-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    padding: 24px;
+  }
+  @media (max-width: 1100px) { .top10-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px)  { .top10-grid { grid-template-columns: 1fr; } }
+
+  .top10-card {
+    background: #13151f;
+    border: 1px solid #2a2d3e;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .top10-card-header {
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #2a2d3e;
+  }
+  .top10-card-header.longs  { color: #44ff88; background: #0a1a0f; }
+  .top10-card-header.shorts { color: #ff4444; background: #1a0a0a; }
+  .top10-card-header.overall{ color: #ffcc44; background: #1a1a00; }
+
+  .top10-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-bottom: 1px solid #1a1d2e;
+    transition: background 0.15s;
+  }
+  .top10-row:last-child { border-bottom: none; }
+  .top10-row:hover { background: #1a1d2e; }
+  .top10-rank {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #ffaa44;
+    min-width: 22px;
+    text-align: center;
+  }
+  .top10-sym {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #e0e0e0;
+    min-width: 90px;
+  }
+  .top10-price {
+    font-size: 0.82rem;
+    color: #aaa;
+    min-width: 60px;
+  }
+  .top10-score {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #ffdd44;
+    min-width: 36px;
+  }
+  .top10-meta {
+    font-size: 0.75rem;
+    color: #666;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .top10-empty {
+    padding: 30px;
+    text-align: center;
+    color: #444;
+    font-size: 0.85rem;
+  }
+  .top10-controls {
+    padding: 20px 24px 0;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .top10-date {
+    font-size: 0.82rem;
+    color: #555;
+    padding: 0 24px 8px;
+  }
 </style>
 </head>
 <body>
@@ -186,13 +275,42 @@
 </header>
 
 <div class="tabs">
+  <div class="tab"        onclick="switchTab('top10')">🏆 Top 10</div>
   <div class="tab active" onclick="switchTab('pivot')">🎯 Pivot Confluence</div>
   <div class="tab"        onclick="switchTab('darvas')">📦 Darvas Box</div>
   <div class="tab"        onclick="switchTab('trendline')">📈 Trendline / Support</div>
-  <div class="tab"        onclick="switchTab('breakout')">🚀 Breakout / Breakdown</div>
   <div class="tab"        onclick="switchTab('insidebar')">🕯️ Inside Bar</div>
   <div class="tab"        onclick="switchTab('accumulation')">📊 Accumulation</div>
   <div class="tab"        onclick="switchTab('momentum')">⚡ Momentum</div>
+</div>
+
+<!-- ════════════════ TOP 10 ════════════════ -->
+<div id="section-top10" class="section">
+  <div class="top10-controls">
+    <button class="btn-scan" onclick="loadTop10()">▶ Load Top 10</button>
+    <span id="top10-status" style="font-size:0.82rem; color:#555;">Click to load today's best setups.</span>
+  </div>
+  <div id="top10-date" class="top10-date"></div>
+  <div id="top10-loading" class="loading" style="display:none">⏳ Running all scanners...<span>May take 30–60 seconds</span></div>
+  <div id="top10-content" style="display:none">
+    <div class="top10-grid">
+      <!-- Longs -->
+      <div class="top10-card">
+        <div class="top10-card-header longs">🟢 Top 10 Longs</div>
+        <div id="top10-longs-body"></div>
+      </div>
+      <!-- Shorts -->
+      <div class="top10-card">
+        <div class="top10-card-header shorts">🔴 Top 10 Shorts</div>
+        <div id="top10-shorts-body"></div>
+      </div>
+      <!-- Overall -->
+      <div class="top10-card">
+        <div class="top10-card-header overall">⭐ Overall Top 10</div>
+        <div id="top10-overall-body"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ════════════════ PIVOT ════════════════ -->
@@ -252,7 +370,7 @@
     <table id="pivot-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('pivot','Symbol')">Symbol ↕</th>
-                <th onclick="sortTable('pivot','Price')">Price ↕</th>
+        <th onclick="sortTable('pivot','Price')">Price ↕</th>
         <th>Setup</th>
         <th>Weekly Hit</th>
         <th>Monthly Hit</th>
@@ -328,7 +446,7 @@
     <table id="darvas-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('darvas','Symbol')">Symbol ↕</th>
-                <th onclick="sortTable('darvas','Direction')">Direction ↕</th>
+        <th onclick="sortTable('darvas','Direction')">Direction ↕</th>
         <th onclick="sortTable('darvas','Box Type')">Box Type ↕</th>
         <th onclick="sortTable('darvas','Price')">Price ↕</th>
         <th onclick="sortTable('darvas','Trigger')">Trigger ↕</th>
@@ -383,7 +501,7 @@
     <table id="trendline-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('trendline','Symbol')">Symbol ↕</th>
-                <th onclick="sortTable('trendline','Price')">Price ↕</th>
+        <th onclick="sortTable('trendline','Price')">Price ↕</th>
         <th onclick="sortTable('trendline','Setup')">Setup ↕</th>
         <th onclick="sortTable('trendline','Level')">Level ↕</th>
         <th>Detail</th>
@@ -394,79 +512,6 @@
       <tbody id="trendline-body"></tbody>
     </table>
     <div id="trendline-empty" class="no-results" style="display:none">No trendline/support setups found.</div>
-  </div>
-</div>
-
-<!-- ════════════════ BREAKOUT ════════════════ -->
-<div id="section-breakout" class="section">
-  <div class="controls">
-    <div><label>Universe</label>
-      <select id="breakout-fo" class="fo-toggle">
-        <option value="false">All Stocks</option>
-        <option value="true">F&amp;O Only</option>
-      </select>
-    </div>
-    <div><label>Direction</label>
-      <select id="breakout-direction">
-        <option value="BOTH">Long + Short</option>
-        <option value="LONG">🟢 Long Only</option>
-        <option value="SHORT">🔴 Short Only</option>
-      </select>
-    </div>
-    <div><label>Trigger Type</label>
-      <select id="breakout-trigger">
-        <option value="">All</option>
-        <option value="Fresh Breakout">Fresh Breakout</option>
-        <option value="Breakout">Breakout</option>
-        <option value="Fresh Breakdown">Fresh Breakdown</option>
-        <option value="Breakdown">Breakdown</option>
-      </select>
-    </div>
-    <div><label>Timeframe</label>
-      <select id="breakout-tf">
-        <option value="">All</option>
-        <option value="Daily + Weekly">Both TF ⭐</option>
-        <option value="Daily">Daily Only</option>
-        <option value="Weekly">Weekly Only</option>
-      </select>
-    </div>
-    <div><label>Min Vol Ratio</label>
-      <input type="text" id="breakout-volratio" placeholder="e.g. 1.5" value="1.5" style="width:75px">
-    </div>
-    <div><label>Vol Rising</label>
-      <select id="breakout-volrising" class="vol-toggle">
-        <option value="false">Any</option>
-        <option value="true">Rising Only ✅</option>
-      </select>
-    </div>
-    <div><label>Max Move %</label>
-      <input type="text" id="breakout-maxpct" placeholder="e.g. 5" style="width:75px">
-    </div>
-    <div><label>Symbol</label>
-      <input type="text" id="breakout-search" placeholder="e.g. HDFCBANK" style="width:120px">
-    </div>
-    <button class="btn-scan"    onclick="loadScan('breakout')">▶ Run Scan</button>
-    <button class="btn-refresh" onclick="refreshScan('breakout')">🔄 Refresh</button>
-  </div>
-  <div class="stats" id="breakout-stats">Click "Run Scan" to start.</div>
-  <div class="table-wrap">
-    <div id="breakout-loading" class="loading" style="display:none">⏳ Scanning breakouts/breakdowns...<span>First run takes 5–10 minutes</span></div>
-    <table id="breakout-table" style="display:none">
-      <thead><tr>
-        <th onclick="sortTable('breakout','Symbol')">Symbol ↕</th>
-                <th onclick="sortTable('breakout','Direction')">Direction ↕</th>
-        <th onclick="sortTable('breakout','Price')">Price ↕</th>
-        <th onclick="sortTable('breakout','Trigger')">Trigger ↕</th>
-        <th onclick="sortTable('breakout','Timeframe')">Timeframe ↕</th>
-        <th>Level</th>
-        <th onclick="sortTable('breakout','Move %')">Move % ↕</th>
-        <th>Both TF</th>
-        <th onclick="sortTable('breakout','Vol Ratio')">Vol Ratio ↕</th>
-        <th>Vol Rising</th>
-      </tr></thead>
-      <tbody id="breakout-body"></tbody>
-    </table>
-    <div id="breakout-empty" class="no-results" style="display:none">No breakout/breakdown setups found.</div>
   </div>
 </div>
 
@@ -534,7 +579,7 @@
     <table id="insidebar-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('insidebar','Symbol')">Symbol ↕</th>
-                <th onclick="sortTable('insidebar','Direction')">Direction ↕</th>
+        <th onclick="sortTable('insidebar','Direction')">Direction ↕</th>
         <th onclick="sortTable('insidebar','Price')">Price ↕</th>
         <th onclick="sortTable('insidebar','Timeframe')">Timeframe ↕</th>
         <th onclick="sortTable('insidebar','Trigger')">Trigger ↕</th>
@@ -594,7 +639,7 @@
     <table id="accumulation-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('accumulation','Symbol')">Symbol ↕</th>
-                <th onclick="sortTable('accumulation','Price')">Price ↕</th>
+        <th onclick="sortTable('accumulation','Price')">Price ↕</th>
         <th onclick="sortTable('accumulation','Score')">Score ↕</th>
         <th>Signals</th>
         <th>Tight+Vol↑</th>
@@ -673,7 +718,7 @@
     <table id="momentum-table" style="display:none">
       <thead><tr>
         <th onclick="sortTable('momentum','Symbol')">Symbol ↕</th>
-                <th onclick="sortTable('momentum','Direction')">Direction ↕</th>
+        <th onclick="sortTable('momentum','Direction')">Direction ↕</th>
         <th onclick="sortTable('momentum','Price')">Price ↕</th>
         <th onclick="sortTable('momentum','Score')">Score ↕</th>
         <th>Signals</th>
@@ -692,7 +737,7 @@
 </div>
 
 <script>
-  const TABS = ['pivot','darvas','trendline','breakout','insidebar','accumulation','momentum'];
+  const TABS = ['top10','pivot','darvas','trendline','insidebar','accumulation','momentum'];
 
   function switchTab(tab) {
     document.querySelectorAll('.tab').forEach((t, i) =>
@@ -702,7 +747,7 @@
   }
 
   const sortState = {};
-  TABS.forEach(t => sortState[t] = { col: '', asc: true });
+  TABS.filter(t => t !== 'top10').forEach(t => sortState[t] = { col: '', asc: true });
 
   function sortTable(scan, col) {
     const s = sortState[scan];
@@ -712,17 +757,73 @@
   }
 
   const dataStore = {};
-  TABS.forEach(t => dataStore[t] = []);
+  TABS.filter(t => t !== 'top10').forEach(t => dataStore[t] = []);
 
   const endpoints = {
-    pivot:        { load: '/api/scan',           refresh: '/api/refresh' },
-    darvas:       { load: '/api/darvas',          refresh: '/api/darvas/refresh' },
-    trendline:    { load: '/api/trendline',       refresh: '/api/trendline/refresh' },
-    breakout:     { load: '/api/breakout',        refresh: '/api/breakout/refresh' },
-    insidebar:    { load: '/api/insidebar',       refresh: '/api/insidebar/refresh' },
-    accumulation: { load: '/api/accumulation',    refresh: '/api/accumulation/refresh' },
-    momentum:     { load: '/api/momentum',        refresh: '/api/momentum/refresh' },
+    pivot:        { load: '/api/scan',        refresh: '/api/refresh' },
+    darvas:       { load: '/api/darvas',       refresh: '/api/darvas/refresh' },
+    trendline:    { load: '/api/trendline',    refresh: '/api/trendline/refresh' },
+    insidebar:    { load: '/api/insidebar',    refresh: '/api/insidebar/refresh' },
+    accumulation: { load: '/api/accumulation', refresh: '/api/accumulation/refresh' },
+    momentum:     { load: '/api/momentum',     refresh: '/api/momentum/refresh' },
   };
+
+  // ════════════════ TOP 10 ════════════════
+
+  async function loadTop10() {
+    document.getElementById('top10-loading').style.display = 'block';
+    document.getElementById('top10-content').style.display = 'none';
+    document.getElementById('top10-status').textContent    = 'Running all scanners…';
+
+    try {
+      const res  = await fetch('/api/top10');
+      const json = await res.json();
+
+      renderTop10('top10-longs-body',   json.longs   || []);
+      renderTop10('top10-shorts-body',  json.shorts  || []);
+      renderTop10('top10-overall-body', json.overall || []);
+
+      document.getElementById('top10-date').textContent =
+        json.date ? `Data for: ${json.date}` : '';
+      document.getElementById('top10-status').textContent =
+        `Loaded — ${(json.longs||[]).length} longs, ${(json.shorts||[]).length} shorts`;
+      document.getElementById('last-updated').textContent =
+        'Updated: ' + new Date().toLocaleTimeString();
+
+      document.getElementById('top10-loading').style.display = 'none';
+      document.getElementById('top10-content').style.display = 'block';
+    } catch(e) {
+      document.getElementById('top10-loading').style.display = 'none';
+      document.getElementById('top10-status').textContent    = 'Error loading Top 10.';
+    }
+  }
+
+  function renderTop10(containerId, rows) {
+    const el = document.getElementById(containerId);
+    if (!rows.length) {
+      el.innerHTML = '<div class="top10-empty">No setups found.</div>';
+      return;
+    }
+    el.innerHTML = rows.map((r, i) => {
+      const isShort   = (r.Direction || '').includes('Short');
+      const priceStr  = r.Price != null ? `₹${r.Price}` : '';
+      const scoreStr  = r.Score != null ? `${r.Score}pt` : '';
+      const scanner   = r.Scanner  || '';
+      const setup     = r.Setup    || r.Trigger || '';
+      const metaStr   = [scanner, setup].filter(Boolean).join(' · ');
+      const rankColor = i === 0 ? '#ffdd44' : i < 3 ? '#ffaa44' : '#888';
+      return `
+        <div class="top10-row">
+          <span class="top10-rank" style="color:${rankColor}">#${i+1}</span>
+          <span class="top10-sym">${r.Symbol}</span>
+          <span class="top10-price">${priceStr}</span>
+          <span class="top10-score" style="color:${isShort?'#ff6666':'#44ff88'}">${scoreStr}</span>
+          <span class="top10-meta">${metaStr}</span>
+        </div>`;
+    }).join('');
+  }
+
+  // ════════════════ SCAN TABS ════════════════
 
   function getExtraParams(scan) {
     const dirEl = document.getElementById(`${scan}-direction`);
@@ -817,19 +918,6 @@
       data = data.filter(r =>
         (!type   || r.Setup.includes(type)) &&
         (!search || r.Symbol.includes(search))
-      );
-    }
-
-    if (scan === 'breakout') {
-      const trigType = document.getElementById('breakout-trigger').value;
-      const tf       = document.getElementById('breakout-tf').value;
-      const maxPct   = parseFloat(document.getElementById('breakout-maxpct').value) || Infinity;
-      const search   = document.getElementById('breakout-search').value.trim().toUpperCase();
-      data = data.filter(r =>
-        (!trigType || r.Trigger.includes(trigType)) &&
-        (!tf       || r.Timeframe === tf) &&
-        r['Move %'] <= maxPct &&
-        (!search   || r.Symbol.includes(search))
       );
     }
 
@@ -974,7 +1062,6 @@
       else if (isBaby)    tr.classList.add('row-baby');
       else if (isMixed)   tr.classList.add('row-mixed');
 
-      const exBadge = exCell(r.Exchange);
       const vRatio  = volCell(r);
       const vRising = r['Vol Rising'] || '';
 
@@ -1031,23 +1118,6 @@
         `;
       }
 
-      if (scan === 'breakout') {
-        const tfBadge   = `<span class="badge ${isShort?'badge-short':'badge-breakout'}">${r.Timeframe}</span>`;
-        const bothBadge = r['Both TF'] && r['Both TF'].includes('⭐')
-          ? `<span class="badge badge-both">⭐ Both TF</span>` : '';
-        tr.innerHTML = `
-          <td><b>${r.Symbol}</b></td>
-          <td>${dirBadge(r.Direction)}</td>
-          <td>₹${r.Price}</td>
-          <td>${triggerBadge(r.Trigger)}</td>
-          <td>${tfBadge}</td>
-          <td class="levels-cell">${r.Level}</td>
-          <td>${r['Move %']}%</td>
-          <td>${bothBadge}</td>
-          <td>${vRatio}</td><td>${vRising}</td>
-        `;
-      }
-
       if (scan === 'insidebar') {
         const bothBadge = r['Both TF'] && r['Both TF'].includes('⭐')
           ? `<span class="badge badge-both">⭐ Both TF</span>` : '';
@@ -1083,7 +1153,6 @@
         ).join('');
         tr.innerHTML = `
           <td><b>${r.Symbol}</b></td>
-          
           <td>₹${r.Price}</td>
           <td>${scoreBadge}</td>
           <td>${sigBadges}</td>
@@ -1110,7 +1179,6 @@
         }).join('');
         tr.innerHTML = `
           <td><b>${r.Symbol}</b></td>
-          
           <td>${dirBadge(r.Direction)}</td>
           <td>₹${r.Price}</td>
           <td>${scoreBadge}</td>
@@ -1150,11 +1218,6 @@
     document.getElementById(id).addEventListener('change', () => applyFilters('trendline')));
   ['trendline-search','trendline-volratio'].forEach(id =>
     document.getElementById(id).addEventListener('input', () => applyFilters('trendline')));
-
-  ['breakout-trigger','breakout-tf','breakout-volrising'].forEach(id =>
-    document.getElementById(id).addEventListener('change', () => applyFilters('breakout')));
-  ['breakout-maxpct','breakout-search','breakout-volratio'].forEach(id =>
-    document.getElementById(id).addEventListener('input', () => applyFilters('breakout')));
 
   document.getElementById('insidebar-n').addEventListener('change', () => loadScan('insidebar'));
   ['insidebar-trigger','insidebar-tf','insidebar-confluence','insidebar-volrising'].forEach(id =>
@@ -1203,7 +1266,7 @@
     const activeTab = TABS.find(t =>
       document.getElementById(`section-${t}`).classList.contains('active')
     );
-    if (!activeTab) return;
+    if (!activeTab || activeTab === 'top10') return;
     const data = dataStore[activeTab];
     if (!data || !data.length) return;
 

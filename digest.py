@@ -35,7 +35,6 @@ def preload_all(cache_ref):
     from scanner import run_scan
     from darvas_scanner import run_darvas_scan
     from trendline_scanner import run_trendline_scan
-    from breakout_scanner import run_breakout_scan
     from inside_bar_scanner import run_inside_bar_scan
     from accumulation_scanner import run_accumulation_scan
     from momentum_scanner import run_momentum_scan
@@ -43,13 +42,12 @@ def preload_all(cache_ref):
 
     print("[Digest] Warming scanner caches...")
     for scan_fn, kwargs, key in [
-        (run_scan,              {'exchange': 'BOTH'},                                          'pivot_BOTH'),
-        (run_darvas_scan,       {'exchange': 'BOTH', 'direction': 'BOTH'},                     'darvas_BOTH'),
-        (run_trendline_scan,    {'exchange': 'BOTH'},                                          'trendline_BOTH'),
-        (run_breakout_scan,     {'exchange': 'BOTH', 'direction': 'BOTH', 'min_vol_ratio': 1.5}, 'breakout_BOTH'),
-        (run_inside_bar_scan,   {'exchange': 'BOTH', 'direction': 'BOTH', 'n': 2},            'insidebar_BOTH_2'),
-        (run_accumulation_scan, {'exchange': 'BOTH', 'min_score': 1, 'min_vol_ratio': 1.5},   'accumulation_BOTH_1'),
-        (run_momentum_scan,     {'exchange': 'BOTH', 'min_score': 2},                         'momentum_BOTH_2'),
+        (run_scan,              {'exchange': 'BOTH'},                                        'pivot_BOTH'),
+        (run_darvas_scan,       {'exchange': 'BOTH', 'direction': 'BOTH'},                   'darvas_BOTH'),
+        (run_trendline_scan,    {'exchange': 'BOTH'},                                        'trendline_BOTH'),
+        (run_inside_bar_scan,   {'exchange': 'BOTH', 'direction': 'BOTH', 'n': 2},          'insidebar_BOTH_2'),
+        (run_accumulation_scan, {'exchange': 'BOTH', 'min_score': 1, 'min_vol_ratio': 1.5}, 'accumulation_BOTH_1'),
+        (run_momentum_scan,     {'exchange': 'BOTH', 'min_score': 2},                       'momentum_BOTH_2'),
     ]:
         try:
             df = scan_fn(**kwargs)
@@ -87,15 +85,7 @@ def structure_score(r, scanner):
 def trigger_score(r, scanner):
     s = 0
     trigger = str(r.get('Trigger', ''))
-    if scanner == 'Breakout':
-        if 'Fresh' in trigger:        s += 2
-        elif 'Breakout' in trigger:   s += 1
-        elif 'Breakdown' in trigger:  s += 1
-        if str(r.get('Both TF', '')).startswith('⭐'): s += 1
-        try:
-            if abs(float(r.get('Gap %', 0) or 0)) >= 2: s += 1
-        except: pass
-    elif scanner == 'Inside Bar':
+    if scanner == 'Inside Bar':
         if trigger in ('Breakout', 'Breakdown'): s += 2
         elif trigger == 'Attempt':               s += 1
         if str(r.get('Both TF', '')).startswith('⭐'): s += 1
@@ -136,17 +126,15 @@ def vol_multiplier(r):
 # ─────────────────────────────────────────
 
 STRUCTURE_SCANNERS  = {'Pivot', 'Trendline', 'Darvas', 'Accumulation'}
-TRIGGER_SCANNERS    = {'Breakout', 'Inside Bar'}
+TRIGGER_SCANNERS    = {'Inside Bar'}
 MOMENTUM_SCANNERS   = {'Momentum'}
 
 TIER1_PAIRS = [
-    {'Breakout', 'Momentum'},
-    {'Inside Bar', 'Breakout'},
     {'Inside Bar', 'Momentum'},
-    {'Accumulation', 'Breakout'},
-    {'Trendline', 'Breakout'},
-    {'Darvas', 'Breakout'},
-    {'Pivot', 'Breakout'},
+    {'Accumulation', 'Inside Bar'},
+    {'Trendline', 'Inside Bar'},
+    {'Darvas', 'Inside Bar'},
+    {'Pivot', 'Inside Bar'},
 ]
 
 TIER2_PAIRS = [
@@ -167,17 +155,16 @@ TIER3_PAIRS = [
 ]
 
 SETUP_LABELS = [
-    ({'Breakout', 'Momentum'},        'Momentum Breakout'),
-    ({'Inside Bar', 'Breakout'},      'Compression Breakout'),
     ({'Inside Bar', 'Momentum'},      'Compression Expansion'),
-    ({'Accumulation', 'Breakout'},    'Accumulation Breakout'),
-    ({'Trendline', 'Breakout'},       'Support Breakout'),
-    ({'Darvas', 'Breakout'},          'Box Breakout'),
-    ({'Pivot', 'Breakout'},           'Pivot Breakout'),
+    ({'Accumulation', 'Inside Bar'},  'Accumulation + Compression'),
+    ({'Trendline', 'Inside Bar'},     'Support + Compression'),
+    ({'Darvas', 'Inside Bar'},        'Box Compression Breakout'),
+    ({'Pivot', 'Inside Bar'},         'Pivot + Compression'),
     ({'Trendline', 'Momentum'},       'Trend Continuation'),
     ({'Accumulation', 'Momentum'},    'Accumulation + Momentum'),
     ({'Pivot', 'Momentum'},           'Pivot + Momentum'),
     ({'Inside Bar', 'Accumulation'},  'Compression + Accumulation'),
+    ({'Darvas', 'Momentum'},          'Box + Momentum'),
 ]
 
 FULL_STACK_LABEL = 'Full Stack Setup 🔥'
@@ -219,8 +206,7 @@ def get_setup_label(scanners_set):
 
 
 def get_scanner_display(scanners_set):
-    order   = ['Accumulation', 'Trendline', 'Darvas', 'Pivot',
-               'Inside Bar', 'Breakout', 'Momentum']
+    order   = ['Accumulation', 'Trendline', 'Darvas', 'Pivot', 'Inside Bar', 'Momentum']
     ordered = [s for s in order if s in scanners_set]
     return ' + '.join(ordered)
 
@@ -235,7 +221,6 @@ def pick_top_setups(cache_ref, top_n=10):
         'Pivot':        cache_ref.get('pivot_BOTH'),
         'Darvas':       cache_ref.get('darvas_BOTH'),
         'Trendline':    cache_ref.get('trendline_BOTH'),
-        'Breakout':     cache_ref.get('breakout_BOTH'),
         'Inside Bar':   cache_ref.get('insidebar_BOTH_2'),
         'Accumulation': cache_ref.get('accumulation_BOTH_1'),
         'Momentum':     cache_ref.get('momentum_BOTH_2'),
@@ -288,9 +273,12 @@ def pick_top_setups(cache_ref, top_n=10):
             'Exchange':         exch,
             'Price':            rep.get('Price', ''),
             'Direction':        rep.get('Direction', ''),
+            'Score':            round(final_score, 1),
             'Vol Ratio':        rep.get('Vol Ratio', ''),
             'Signals':          rep.get('Signals', rep.get('Trigger', rep.get('Setup', ''))),
             'Both TF':          rep.get('Both TF', ''),
+            'Scanner':          get_scanner_display(scanners_set),
+            'Setup':            get_setup_label(scanners_set),
             '_scanners':        scanners_set,
             '_scanner_display': get_scanner_display(scanners_set),
             '_setup_label':     get_setup_label(scanners_set),
@@ -331,6 +319,22 @@ def pick_top_setups(cache_ref, top_n=10):
     final_rows    = reserved_list + top
     final_df      = pd.DataFrame(final_rows).sort_values('_total', ascending=False).head(top_n)
     return final_df
+
+
+# ─────────────────────────────────────────
+# RUN DIGEST SCAN  (called by /api/top10)
+# ─────────────────────────────────────────
+
+def run_digest_scan(top_n=20):
+    """
+    Run all scanners and return a ranked DataFrame of top setups.
+    Used by /api/top10 in app.py — runs its own isolated cache so it
+    doesn't pollute the main app cache.
+    top_n=20 so we have enough rows for longs/shorts/overall top 10 each.
+    """
+    local_cache = {}
+    preload_all(local_cache)
+    return pick_top_setups(local_cache, top_n=top_n)
 
 
 # ─────────────────────────────────────────
@@ -436,7 +440,7 @@ def build_email_html(top_df, day):
       <br>
       <b style="color:#7c83fd;">Confluence tiers:</b>
       &nbsp; Full Stack 🔥 +4 &nbsp;|&nbsp;
-      Tier 1 (Breakout+Momentum etc.) +3 &nbsp;|&nbsp;
+      Tier 1 (Inside Bar+Momentum etc.) +3 &nbsp;|&nbsp;
       Tier 2 (Structure+Momentum) +2 &nbsp;|&nbsp;
       Tier 3 +1 &nbsp;|&nbsp; max +4
       <br>

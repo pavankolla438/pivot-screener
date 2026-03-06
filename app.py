@@ -7,7 +7,6 @@ from scanner import run_scan
 from momentum_scanner import run_momentum_scan
 from darvas_scanner import run_darvas_scan
 from trendline_scanner import run_trendline_scan
-from breakout_scanner import run_breakout_scan
 from inside_bar_scanner import run_inside_bar_scan
 from data_fetcher import get_fo_symbols, get_last_trading_day
 from cache_helper import clear_old_cache, clear_old_bulk_cache
@@ -211,24 +210,6 @@ def api_trendline_refresh():
     _cache['trendline_ALL'] = run_and_enrich(run_trendline_scan)
     return to_json(filter_fo(_cache['trendline_ALL'], fo_only))
 
-# ── BREAKOUT ──
-
-@app.route('/api/breakout')
-def api_breakout():
-    fo_only, direction = get_params()
-    ensure_preloaded()
-    if 'breakout_ALL' not in _cache:
-        _cache['breakout_ALL'] = run_and_enrich(run_breakout_scan, direction='BOTH')
-    return to_json(filter_fo(dir_filter(_cache['breakout_ALL'], direction), fo_only))
-
-@app.route('/api/breakout/refresh')
-def api_breakout_refresh():
-    fo_only, direction = get_params()
-    ensure_preloaded()
-    _cache.pop('breakout_ALL', None)
-    _cache['breakout_ALL'] = run_and_enrich(run_breakout_scan, direction='BOTH')
-    return to_json(filter_fo(dir_filter(_cache['breakout_ALL'], direction), fo_only))
-
 # ── INSIDE BAR ──
 
 @app.route('/api/insidebar')
@@ -294,6 +275,45 @@ def api_momentum_refresh():
     _cache.pop(cache_key, None)
     _cache[cache_key] = run_and_enrich(run_momentum_scan, min_score=min_score)
     return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+
+# ── TOP 10 ──
+
+@app.route('/api/top10')
+def api_top10():
+    ensure_preloaded()
+    if 'top10' not in _cache:
+        from digest import run_digest_scan
+        df = run_digest_scan()
+        if df is None or df.empty:
+            _cache['top10'] = {'longs': [], 'shorts': [], 'overall': [], 'date': str(get_last_trading_day())}
+        else:
+            # Keep only JSON-safe fields (drop sets and internal _ keys)
+            KEEP = {'Symbol', 'Exchange', 'Price', 'Direction', 'Score',
+                    'Vol Ratio', 'Scanner', 'Setup', 'Both TF', 'Signals'}
+
+            def clean(row):
+                return {k: (float(v) if hasattr(v, 'item') else v)
+                        for k, v in row.items() if k in KEEP}
+
+            def is_long(row):
+                d = str(row.get('Direction', ''))
+                return 'Long' in d or 'LONG' in d
+
+            def is_short(row):
+                d = str(row.get('Direction', ''))
+                return 'Short' in d or 'SHORT' in d
+
+            records = [clean(r) for r in df.to_dict('records')]
+            longs   = [r for r in records if is_long(r)][:10]
+            shorts  = [r for r in records if is_short(r)][:10]
+            overall = records[:10]
+            _cache['top10'] = {
+                'longs':   longs,
+                'shorts':  shorts,
+                'overall': overall,
+                'date':    str(get_last_trading_day()),
+            }
+    return jsonify(_cache['top10'])
 
 # ── LTP ──
 
