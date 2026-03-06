@@ -15,43 +15,28 @@ class MarketContext:
 
     def build(self):
         from data_fetcher import (
-            get_nse_ohlc, get_bse_ohlc, get_all_ohlc,
-            get_weekly_ohlc_nse, get_weekly_ohlc_bse,
-            get_monthly_ohlc_nse, get_monthly_ohlc_bse,
+            get_nse_ohlc, get_all_ohlc,
+            get_weekly_ohlc_nse, get_monthly_ohlc_nse,
         )
         from pivot_calculator import calculate_pivots
         exch = self.exchange
         day  = self.day
         print(f"[Context] Building market context for {exch} {day}...")
 
-        # ── Daily OHLC ──
-        if exch == 'NSE':
-            self.daily = get_nse_ohlc(day)
-        elif exch == 'BSE':
-            self.daily = get_bse_ohlc(day)
-        elif exch == 'ALL':
-            self.daily = get_all_ohlc(day)
+        # Daily OHLC — all exchanges now route to NSE
+        self.daily = get_all_ohlc(day) if exch in ('ALL', 'BOTH') else get_nse_ohlc(day)
 
         if self.daily is None:
             print(f"[Context] No daily data for {exch}.")
             return False
 
-        # ── Weekly OHLC + Pivots ──
-        # For ALL: use NSE weekly (covers most stocks)
-        if exch in ('NSE', 'ALL'):
-            self.weekly_ohlc = get_weekly_ohlc_nse()
-        else:
-            self.weekly_ohlc = get_weekly_ohlc_bse()
-
+        # Weekly OHLC + Pivots
+        self.weekly_ohlc = get_weekly_ohlc_nse()
         if self.weekly_ohlc is not None:
             self.weekly_pivots = calculate_pivots(self.weekly_ohlc).set_index('symbol')
 
-        # ── Monthly OHLC + Pivots ──
-        if exch in ('NSE', 'ALL'):
-            self.monthly_ohlc = get_monthly_ohlc_nse()
-        else:
-            self.monthly_ohlc = get_monthly_ohlc_bse()
-
+        # Monthly OHLC + Pivots
+        self.monthly_ohlc = get_monthly_ohlc_nse()
         if self.monthly_ohlc is not None:
             self.monthly_pivots = calculate_pivots(self.monthly_ohlc).set_index('symbol')
 
@@ -65,31 +50,20 @@ class MarketContext:
 def get_context(exchange):
     today = str(datetime.today().date())
 
-    # normalize — ALL replaces BOTH
-    if exchange in ('BOTH', 'ALL'):
-        exch_list = ['ALL']
-    elif exchange == 'NSE':
-        exch_list = ['NSE']
-    elif exchange == 'BSE':
-        exch_list = ['BSE']
-    else:
-        exch_list = ['ALL']
+    # All exchange variants resolve to NSE
+    exch = 'NSE'
+    key  = f"NSE_{today}"
 
-    contexts = {}
-    for exch in exch_list:
-        key = f"{exch}_{today}"
-        if key not in _context_cache:
-            from data_fetcher import get_last_trading_day
-            day = get_last_trading_day()
-            ctx = MarketContext(exch, day)
-            if ctx.build():
-                _context_cache[key] = ctx
-            else:
-                contexts[exch] = None
-                continue
-        contexts[exch] = _context_cache[key]
+    if key not in _context_cache:
+        from data_fetcher import get_last_trading_day
+        day = get_last_trading_day()
+        ctx = MarketContext(exch, day)
+        if ctx.build():
+            _context_cache[key] = ctx
+        else:
+            return {exchange: None}
 
-    return contexts
+    return {exchange: _context_cache[key]}
 
 
 def clear_context():

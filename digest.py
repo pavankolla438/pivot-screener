@@ -23,14 +23,13 @@ def preload_all(cache_ref):
     day = get_last_trading_day()
     print(f"\n[Digest] Preloading all data for {day}...")
 
-    for exch in ['NSE', 'BSE']:
-        contexts = get_context(exch)
-        ctx = contexts.get(exch)
-        if ctx and ctx.daily is not None:
-            symbols = ctx.daily['symbol'].tolist()
-            preload_histories(symbols, exch, intervals=('1d','1wk'), lookback_bars=252)
-            store_stats()
-        print(f"[Digest] {exch} preload complete.")
+    contexts = get_context('NSE')
+    ctx = contexts.get('NSE')
+    if ctx and ctx.daily is not None:
+        symbols = ctx.daily['symbol'].tolist()
+        preload_histories(symbols, 'NSE', intervals=('1d','1wk'), lookback_bars=252)
+        store_stats()
+    print("[Digest] NSE preload complete.")
 
     from scanner import run_scan
     from darvas_scanner import run_darvas_scan
@@ -42,12 +41,12 @@ def preload_all(cache_ref):
 
     print("[Digest] Warming scanner caches...")
     for scan_fn, kwargs, key in [
-        (run_scan,              {'exchange': 'BOTH'},                                        'pivot_BOTH'),
-        (run_darvas_scan,       {'exchange': 'BOTH', 'direction': 'BOTH'},                   'darvas_BOTH'),
-        (run_trendline_scan,    {'exchange': 'BOTH'},                                        'trendline_BOTH'),
-        (run_inside_bar_scan,   {'exchange': 'BOTH', 'direction': 'BOTH', 'n': 2},          'insidebar_BOTH_2'),
-        (run_accumulation_scan, {'exchange': 'BOTH', 'min_score': 1, 'min_vol_ratio': 1.5}, 'accumulation_BOTH_1'),
-        (run_momentum_scan,     {'exchange': 'BOTH', 'min_score': 2},                       'momentum_BOTH_2'),
+        (run_scan,              {},                                        'pivot_BOTH'),
+        (run_darvas_scan,       {'direction': 'BOTH'},                    'darvas_BOTH'),
+        (run_trendline_scan,    {},                                        'trendline_BOTH'),
+        (run_inside_bar_scan,   {'direction': 'BOTH', 'n': 2},            'insidebar_BOTH_2'),
+        (run_accumulation_scan, {'min_score': 1, 'min_vol_ratio': 1.5},   'accumulation_BOTH_1'),
+        (run_momentum_scan,     {'min_score': 2},                         'momentum_BOTH_2'),
     ]:
         try:
             df = scan_fn(**kwargs)

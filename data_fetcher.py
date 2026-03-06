@@ -81,18 +81,12 @@ def is_trading_day(d: date) -> bool:
 # DATE HELPERS
 # ─────────────────────────────────────────
 
-# Cache so we never compute this twice in the same process
 _last_trading_day_cache = None
 
 def get_last_trading_day():
     """
     Returns most recent NSE trading day for which bhavcopy data is available.
-
-    Logic:
-      1. If a cached bhavcopy CSV exists for a candidate day → confirmed, use it.
-      2. If no cache exists for today → today's file not published yet (pre-3:30 PM IST)
-         → skip today and return the previous trading day.
-      3. Pure local check — zero HTTP calls.
+    Pure local check — zero HTTP calls.
     """
     global _last_trading_day_cache
     if _last_trading_day_cache is not None:
@@ -109,18 +103,14 @@ def get_last_trading_day():
         cache_path = os.path.join(DATA_DIR, f"nse_bhav_{candidate.strftime('%Y%m%d')}.csv")
 
         if os.path.exists(cache_path):
-            # Bhavcopy already downloaded — confirmed available
             _last_trading_day_cache = candidate
             return _last_trading_day_cache
 
         if candidate < today:
-            # Past trading day with no cache yet — bhavcopy will be downloaded
-            # by market_context/download_nse_bhavcopy on first use
             _last_trading_day_cache = candidate
             return _last_trading_day_cache
 
-        # candidate == today and no cache → bhavcopy not published yet
-        # fall back to previous day
+        # candidate == today and no cache -> bhavcopy not published yet
         candidate -= timedelta(days=1)
 
     raise RuntimeError("Could not determine last trading day in the past 14 days.")
@@ -199,142 +189,16 @@ def get_nse_ohlc(date):
             df[c] = pd.to_numeric(df[c], errors='coerce')
     return df.dropna(subset=['open','high','low','close'])
 
-# ─────────────────────────────────────────
-# BSE — BATCH yf.download()
-# ─────────────────────────────────────────
-
-BSE_BATCH_SIZE = 100  # symbols per batch to avoid yfinance timeouts
-
-def get_bse_stock_list():
-    """Derive BSE universe from NSE symbols — most stocks are dual-listed."""
-    day    = get_last_trading_day()
-    nse_df = get_nse_ohlc(day)
-    if nse_df is None:
-        return []
-    return nse_df['symbol'].tolist()
-
-def get_bse_ohlc(date):
-    """
-    Returns BSE OHLC for a given date using yf.download() batch mode.
-    Much faster than one-by-one Ticker.history() calls.
-    """
-    cache_path = os.path.join(DATA_DIR, f"bse_bhav_{date.strftime('%Y%m%d')}.csv")
-    if os.path.exists(cache_path):
-        print(f"[BSE] Loading cached file for {date}")
-        df = pd.read_csv(cache_path)
-        df['exchange'] = 'BSE'
-        return df
-
-    symbols = get_bse_stock_list()
-    if not symbols:
-        print("[BSE] Could not get stock list.")
-        return None
-
-    start_str = date.strftime("%Y-%m-%d")
-    end_str   = (date + timedelta(days=1)).strftime("%Y-%m-%d")
-    tickers   = [s + ".BO" for s in symbols]
-
-    print(f"[BSE] Batch downloading {len(tickers)} stocks for {date}...")
-
-    records = []
-    total_batches = (len(tickers) + BSE_BATCH_SIZE - 1) // BSE_BATCH_SIZE
-
-    for batch_num in range(total_batches):
-        batch_tickers = tickers[batch_num * BSE_BATCH_SIZE:(batch_num + 1) * BSE_BATCH_SIZE]
-        batch_symbols = symbols[batch_num * BSE_BATCH_SIZE:(batch_num + 1) * BSE_BATCH_SIZE]
-
-        try:
-            raw = yf.download(
-                tickers     = batch_tickers,
-                start       = start_str,
-                end         = end_str,
-                interval    = '1d',
-                group_by    = 'ticker',
-                auto_adjust = True,
-                progress    = False,
-                threads     = True,
-            )
-
-            if raw.empty:
-                continue
-
-            # Handle single vs multi ticker response
-            if len(batch_tickers) == 1:
-                sym = batch_symbols[0]
-                if not raw.empty:
-                    row = raw.iloc[0]
-                    records.append({
-                        'symbol': sym,
-                        'open':   float(row['Open']),
-                        'high':   float(row['High']),
-                        'low':    float(row['Low']),
-                        'close':  float(row['Close']),
-                    })
-            else:
-                for sym, ticker in zip(batch_symbols, batch_tickers):
-                    try:
-                        stock_df = raw[ticker] if ticker in raw.columns.get_level_values(0) else None
-                        if stock_df is None or stock_df.empty:
-                            continue
-                        stock_df = stock_df.dropna(subset=['Close'])
-                        if stock_df.empty:
-                            continue
-                        row = stock_df.iloc[0]
-                        records.append({
-                            'symbol': sym,
-                            'open':   float(row['Open']),
-                            'high':   float(row['High']),
-                            'low':    float(row['Low']),
-                            'close':  float(row['Close']),
-                        })
-                    except Exception:
-                        pass
-
-        except Exception as e:
-            print(f"[BSE] Batch {batch_num+1} error: {e}")
-            continue
-
-        print(f"[BSE] Batch {batch_num+1}/{total_batches} done — {len(records)} stocks so far")
-
-    if not records:
-        print("[BSE] No data retrieved.")
-        return None
-
-    result = pd.DataFrame(records)
-    result.to_csv(cache_path, index=False)
-    result['exchange'] = 'BSE'
-    print(f"[BSE] Done. Got {len(result)} stocks.")
-    return result
-
+# NSE-only alias — all scanners that used 'ALL' or 'BOTH' now use NSE
 def get_all_ohlc(date):
-    """
-    Returns unified OHLC for all stocks.
-    NSE preferred for duplicates. BSE-only stocks added after.
-    Returns single DataFrame with 'exchange' column showing primary exchange.
-    """
-    nse_df = get_nse_ohlc(date)
-    bse_df = get_bse_ohlc(date)
-
-    if nse_df is None and bse_df is None:
-        return None
-    if nse_df is None:
-        bse_df['exchange'] = 'BSE'
-        return bse_df
-    if bse_df is None:
-        nse_df['exchange'] = 'NSE'
-        return nse_df
-
-    nse_syms = set(nse_df['symbol'].str.upper())
-    bse_only = bse_df[~bse_df['symbol'].str.upper().isin(nse_syms)].copy()
-    bse_only['exchange'] = 'BSE'
-    nse_df['exchange']   = 'NSE'
-
-    combined = pd.concat([nse_df, bse_only], ignore_index=True)
-    print(f"[All] Unified: {len(nse_df)} NSE + {len(bse_only)} BSE-only = {len(combined)} total")
-    return combined
+    """NSE only. BSE removed — NSE covers all liquid/F&O stocks."""
+    df = get_nse_ohlc(date)
+    if df is not None:
+        print(f"[NSE] {len(df)} stocks loaded.")
+    return df
 
 # ─────────────────────────────────────────
-# WEEKLY & MONTHLY OHLC AGGREGATION
+# WEEKLY & MONTHLY OHLC AGGREGATION  (NSE only)
 # ─────────────────────────────────────────
 
 def aggregate_ohlc(frames):
@@ -373,36 +237,6 @@ def get_monthly_ohlc_nse():
         current += timedelta(days=1)
     if not frames:
         print("[NSE Monthly] No data found.")
-        return None
-    return aggregate_ohlc(frames)
-
-def get_weekly_ohlc_bse():
-    start, end = get_previous_week_range()
-    frames  = []
-    current = start
-    while current <= end:
-        if is_trading_day(current):
-            df = get_bse_ohlc(current)
-            if df is not None:
-                frames.append(df)
-        current += timedelta(days=1)
-    if not frames:
-        print("[BSE Weekly] No data found.")
-        return None
-    return aggregate_ohlc(frames)
-
-def get_monthly_ohlc_bse():
-    start, end = get_previous_month_range()
-    frames  = []
-    current = start
-    while current <= end:
-        if is_trading_day(current):
-            df = get_bse_ohlc(current)
-            if df is not None:
-                frames.append(df)
-        current += timedelta(days=1)
-    if not frames:
-        print("[BSE Monthly] No data found.")
         return None
     return aggregate_ohlc(frames)
 
@@ -455,7 +289,7 @@ def get_fo_symbols():
 if __name__ == "__main__":
     import time
 
-    print("Testing get_last_trading_day() — should be instant (no HTTP):")
+    print("Testing get_last_trading_day() -- should be instant (no HTTP):")
     t0 = time.perf_counter()
     day = get_last_trading_day()
     t1 = time.perf_counter()
@@ -466,21 +300,11 @@ if __name__ == "__main__":
     t3 = time.perf_counter()
     print(f"  Second call (cache): {day2}  ({(t3-t2)*1000:.3f} ms)")
 
-    print(f"\nIs 2026-01-26 trading? {is_trading_day(date(2026, 1, 26))}  (expect False — Republic Day)")
+    print(f"\nIs 2026-01-26 trading? {is_trading_day(date(2026, 1, 26))}  (expect False)")
     print(f"Is 2026-01-27 trading? {is_trading_day(date(2026, 1, 27))}  (expect True)")
-    print(f"Is 2026-01-25 trading? {is_trading_day(date(2026, 1, 25))}  (expect False — Sunday)")
 
     print("\n=== Testing NSE Daily ===")
     df_nse = get_nse_ohlc(day)
     if df_nse is not None:
         print(df_nse.head())
         print(f"Total NSE EQ stocks: {len(df_nse)}")
-
-    print("\n=== Testing BSE Daily (batch mode) ===")
-    t0     = time.time()
-    df_bse = get_bse_ohlc(day)
-    t1     = time.time()
-    if df_bse is not None:
-        print(df_bse.head())
-        print(f"Total BSE stocks: {len(df_bse)}")
-        print(f"Time taken: {round(t1-t0, 1)}s")
