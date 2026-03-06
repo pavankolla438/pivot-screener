@@ -12,6 +12,11 @@ DIGEST_TO      = os.environ.get('DIGEST_TO',      '')
 
 MAX_CONFLUENCE_BONUS = 4
 
+# Volume multiplier cap — vol_ratio of ~10x gives vm=3.30, 20x gives 3.99.
+# Stocks with extreme vol spikes (halt, news, operator) shouldn't dominate ranking.
+# Cap at 2.5 ≈ vol_ratio of 7.4x — meaningful but not runaway.
+VM_CAP = 2.5
+
 # ─────────────────────────────────────────
 # PRELOAD ALL DATA
 # ─────────────────────────────────────────
@@ -145,7 +150,7 @@ def vol_multiplier(r):
         vr = max(float(r.get('Vol Ratio', 1) or 1), 1.0)
     except:
         vr = 1.0
-    return 1 + math.log(vr)
+    return min(VM_CAP, 1 + math.log(vr))
 
 
 # ─────────────────────────────────────────
@@ -156,7 +161,6 @@ STRUCTURE_SCANNERS  = {'Pivot', 'Trendline', 'Darvas', 'Accumulation'}
 TRIGGER_SCANNERS    = {'Inside Bar'}
 MOMENTUM_SCANNERS   = {'Momentum'}
 
-# Tier 1 (+3): Structure + Trigger OR Trigger + Momentum — the classic setups
 TIER1_PAIRS = [
     {'Inside Bar', 'Momentum'},       # compression then momentum fire
     {'Accumulation', 'Inside Bar'},   # vol buildup + coiling
@@ -165,27 +169,25 @@ TIER1_PAIRS = [
     {'Pivot', 'Inside Bar'},          # CPR + coiling
 ]
 
-# Tier 2 (+2): Structure + Momentum (no trigger) OR two strong structures
+# Tier 2 (+2): Structure + Momentum OR two strong structures
 TIER2_PAIRS = [
     {'Trendline', 'Momentum'},
     {'Pivot', 'Momentum'},
     {'Accumulation', 'Momentum'},
     {'Darvas', 'Momentum'},
-    {'Darvas', 'Accumulation'},       # two structure signals agree — meaningful
-    {'Pivot', 'Accumulation'},        # CPR + vol buildup
-    {'Trendline', 'Accumulation'},    # support + vol buildup
-    {'Pivot', 'Darvas'},              # CPR + box level overlap
+    {'Darvas', 'Accumulation'},       # two structure signals agree
+    {'Pivot', 'Accumulation'},
+    {'Trendline', 'Accumulation'},
+    {'Pivot', 'Darvas'},
 ]
 
-# Tier 3 (+1): Single-category combos with less direct confluence
+# Tier 3 (+1): weaker combos
 TIER3_PAIRS = [
-    {'Trendline', 'Pivot'},           # two support types (same as Pivot+Trendline above — keep for safety)
+    {'Trendline', 'Pivot'},
 ]
 
-# Setup label lookup — every possible 2-scanner combination must have an entry
-# to avoid falling through to random set element
 SETUP_LABELS = [
-    # Trigger combos (highest priority for 2-scanner)
+    # Trigger combos
     ({'Inside Bar', 'Momentum'},      'Compression Expansion'),
     ({'Accumulation', 'Inside Bar'},  'Accumulation + Compression'),
     ({'Trendline', 'Inside Bar'},     'Support + Compression'),
@@ -300,9 +302,20 @@ def pick_top_setups(cache_ref, top_n=10):
                 best_per_scanner[sc] = r
 
         rep        = max(best_per_scanner.values(), key=lambda r: r['_raw'])
+        total_base = sum(r['_base'] for r in best_per_scanner.values())
 
-        # Direction: use rep's direction if present, else borrow from another
-        # scanner row in the group — prioritise actionable over neutral scanners
+        # Volume multiplier: base-weighted average across all scanners.
+        # Prevents one high-vol scanner row from inflating the entire symbol score.
+        # Falls back to rep vm if all bases are zero (edge case).
+        if total_base > 0:
+            vm = sum(r['_base'] * r['_vm'] for r in best_per_scanner.values()) / total_base
+        else:
+            vm = rep['_vm']
+        vm = min(VM_CAP, vm)   # safety cap (each _vm is already capped, but belt+braces)
+
+        raw_score   = total_base * vm
+
+        # Direction: use rep's if present, else borrow from the most actionable scanner
         rep_direction = rep.get('Direction', '')
         if not rep_direction or str(rep_direction) in ('', 'nan'):
             dir_priority = ['Darvas', 'Inside Bar', 'Momentum',
@@ -314,9 +327,6 @@ def pick_top_setups(cache_ref, top_n=10):
                     if d and str(d) not in ('', 'nan'):
                         rep_direction = d
                         break
-        total_base = sum(r['_base'] for r in best_per_scanner.values())
-        vm         = rep['_vm']
-        raw_score  = total_base * vm
         conf_bonus  = get_confluence_bonus(scanners_set)
         final_score = raw_score + conf_bonus
 
