@@ -106,13 +106,13 @@ def dir_filter(df, direction):
     if direction == 'BOTH' or df.empty or 'Direction' not in df.columns:
         return df
     if direction == 'LONG':
-        return df[df['Direction'] == '🟢 Long'].reset_index(drop=True)
+        return df[df['Direction'] == '\U0001f7e2 Long'].reset_index(drop=True)
     if direction == 'SHORT':
-        return df[df['Direction'] == '🔴 Short'].reset_index(drop=True)
+        return df[df['Direction'] == '\U0001f534 Short'].reset_index(drop=True)
     if direction == 'ATTEMPT':
-        return df[df['Direction'] == '⚡ Attempt'].reset_index(drop=True)
+        return df[df['Direction'] == '\u26a1 Attempt'].reset_index(drop=True)
     if direction == 'BABY':
-        return df[df['Direction'] == '🟡 Baby'].reset_index(drop=True)
+        return df[df['Direction'] == '\U0001f7e1 Baby'].reset_index(drop=True)
     return df
 
 def to_json(df):
@@ -140,6 +140,27 @@ def run_and_enrich(scan_fn, **kwargs):
         df = enrich_with_volume(df)
     return df
 
+def ensure_all_scanners_cached():
+    """Run all scanners into app cache if not already cached. Used by Top 10."""
+    if 'pivot_ALL' not in _cache:
+        print("[Top10] Running pivot scanner...")
+        _cache['pivot_ALL'] = run_and_enrich(run_scan)
+    if 'darvas_ALL' not in _cache:
+        print("[Top10] Running darvas scanner...")
+        _cache['darvas_ALL'] = run_and_enrich(run_darvas_scan, direction='BOTH')
+    if 'trendline_ALL' not in _cache:
+        print("[Top10] Running trendline scanner...")
+        _cache['trendline_ALL'] = run_and_enrich(run_trendline_scan)
+    if 'insidebar_ALL_2' not in _cache:
+        print("[Top10] Running insidebar scanner...")
+        _cache['insidebar_ALL_2'] = run_and_enrich(run_inside_bar_scan, direction='BOTH', n=2)
+    if 'accumulation_ALL_1' not in _cache:
+        print("[Top10] Running accumulation scanner...")
+        _cache['accumulation_ALL_1'] = run_and_enrich(run_accumulation_scan, min_score=1)
+    if 'momentum_ALL_2' not in _cache:
+        print("[Top10] Running momentum scanner...")
+        _cache['momentum_ALL_2'] = run_and_enrich(run_momentum_scan, min_score=2)
+
 # ─────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────
@@ -156,7 +177,7 @@ def api_trigger_digest():
     threading.Thread(target=lambda: run_daily_digest(_cache), daemon=True).start()
     return jsonify({'status': 'digest triggered in background'})
 
-# ── PIVOT ──
+# -- PIVOT --
 
 @app.route('/api/scan')
 def api_scan():
@@ -174,7 +195,7 @@ def api_refresh():
     _cache['pivot_ALL'] = run_and_enrich(run_scan)
     return to_json(filter_fo(_cache['pivot_ALL'], fo_only))
 
-# ── DARVAS ──
+# -- DARVAS --
 
 @app.route('/api/darvas')
 def api_darvas():
@@ -192,7 +213,7 @@ def api_darvas_refresh():
     _cache['darvas_ALL'] = run_and_enrich(run_darvas_scan, direction='BOTH')
     return to_json(filter_fo(dir_filter(_cache['darvas_ALL'], direction), fo_only))
 
-# ── TRENDLINE ──
+# -- TRENDLINE --
 
 @app.route('/api/trendline')
 def api_trendline():
@@ -210,7 +231,7 @@ def api_trendline_refresh():
     _cache['trendline_ALL'] = run_and_enrich(run_trendline_scan)
     return to_json(filter_fo(_cache['trendline_ALL'], fo_only))
 
-# ── INSIDE BAR ──
+# -- INSIDE BAR --
 
 @app.route('/api/insidebar')
 def api_insidebar():
@@ -232,7 +253,7 @@ def api_insidebar_refresh():
     _cache[cache_key] = run_and_enrich(run_inside_bar_scan, direction='BOTH', n=n)
     return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
 
-# ── ACCUMULATION ──
+# -- ACCUMULATION --
 
 @app.route('/api/accumulation')
 def api_accumulation():
@@ -254,7 +275,7 @@ def api_accumulation_refresh():
     _cache[cache_key] = run_and_enrich(run_accumulation_scan, min_score=min_score)
     return to_json(filter_fo(_cache[cache_key], fo_only))
 
-# ── MOMENTUM ──
+# -- MOMENTUM --
 
 @app.route('/api/momentum')
 def api_momentum():
@@ -276,18 +297,35 @@ def api_momentum_refresh():
     _cache[cache_key] = run_and_enrich(run_momentum_scan, min_score=min_score)
     return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
 
-# ── TOP 10 ──
+# -- TOP 10 --
 
 @app.route('/api/top10')
 def api_top10():
-    # No ensure_preloaded() here — run_digest_scan() handles its own preload internally
+    ensure_preloaded()
     if 'top10' not in _cache:
-        from digest import run_digest_scan
-        df = run_digest_scan()
+        from digest import pick_top_setups
+
+        # Run any scanners not already cached — reuses existing results if available
+        ensure_all_scanners_cached()
+
+        # Feed app cache directly into digest scorer — no separate BSE/yfinance preload
+        digest_cache = {
+            'pivot_BOTH':          _cache.get('pivot_ALL',          pd.DataFrame()),
+            'darvas_BOTH':         _cache.get('darvas_ALL',         pd.DataFrame()),
+            'trendline_BOTH':      _cache.get('trendline_ALL',      pd.DataFrame()),
+            'insidebar_BOTH_2':    _cache.get('insidebar_ALL_2',    pd.DataFrame()),
+            'accumulation_BOTH_1': _cache.get('accumulation_ALL_1', pd.DataFrame()),
+            'momentum_BOTH_2':     _cache.get('momentum_ALL_2',     pd.DataFrame()),
+        }
+
+        df = pick_top_setups(digest_cache, top_n=20)
+
         if df is None or df.empty:
-            _cache['top10'] = {'longs': [], 'shorts': [], 'overall': [], 'date': str(get_last_trading_day())}
+            _cache['top10'] = {
+                'longs': [], 'shorts': [], 'overall': [],
+                'date': str(get_last_trading_day()),
+            }
         else:
-            # Keep only JSON-safe fields (drop sets and internal _ keys)
             KEEP = {'Symbol', 'Exchange', 'Price', 'Direction', 'Score',
                     'Vol Ratio', 'Scanner', 'Setup', 'Both TF', 'Signals'}
 
@@ -296,26 +334,22 @@ def api_top10():
                         for k, v in row.items() if k in KEEP}
 
             def is_long(row):
-                d = str(row.get('Direction', ''))
-                return 'Long' in d or 'LONG' in d
+                return 'Long' in str(row.get('Direction', ''))
 
             def is_short(row):
-                d = str(row.get('Direction', ''))
-                return 'Short' in d or 'SHORT' in d
+                return 'Short' in str(row.get('Direction', ''))
 
             records = [clean(r) for r in df.to_dict('records')]
-            longs   = [r for r in records if is_long(r)][:10]
-            shorts  = [r for r in records if is_short(r)][:10]
-            overall = records[:10]
             _cache['top10'] = {
-                'longs':   longs,
-                'shorts':  shorts,
-                'overall': overall,
+                'longs':   [r for r in records if is_long(r)][:10],
+                'shorts':  [r for r in records if is_short(r)][:10],
+                'overall': records[:10],
                 'date':    str(get_last_trading_day()),
             }
+
     return jsonify(_cache['top10'])
 
-# ── LTP ──
+# -- LTP --
 
 @app.route('/api/ltp', methods=['POST'])
 def api_ltp():
@@ -333,7 +367,7 @@ def api_ltp():
 def api_market_status():
     return jsonify({'open': is_market_open()})
 
-# ── UTILS ──
+# -- UTILS --
 
 @app.route('/api/clear_cache')
 def api_clear_cache():
@@ -347,7 +381,7 @@ def api_clear_cache():
 def api_fo_count():
     return jsonify({'count': len(get_fo())})
 
-# ── SCHEDULER ──
+# -- SCHEDULER --
 
 def start_scheduler():
     IST = pytz.timezone('Asia/Kolkata')
