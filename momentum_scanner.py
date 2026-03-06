@@ -297,8 +297,11 @@ def run_momentum_scan(exchange='ALL', min_score=2):
         # Accumulate per-symbol hits across timeframes
         sym_hits = {}  # { sym: { '1d': {...}, '1wk': {...} } }
 
+        # histories stored under NSE key after universe unification
+        fetch_exch = 'NSE' if exch in ('ALL', 'BOTH') else exch
+
         for interval, label in [('1d', 'Daily'), ('1wk', 'Weekly')]:
-            histories = get_all_histories(exch, interval)
+            histories = get_all_histories(fetch_exch, interval)
 
             for sym, df in histories.items():
                 if df is None or len(df) < MIN_BARS:
@@ -306,7 +309,7 @@ def run_momentum_scan(exchange='ALL', min_score=2):
                 if daily_map.get(sym) is None:
                     continue
 
-                divs       = find_rsi_divergence(df, sym, exch, interval)
+                divs       = find_rsi_divergence(df, sym, fetch_exch, interval)
                 macd_cross = find_macd_crossover(df)
 
                 # Skip if neither signal present

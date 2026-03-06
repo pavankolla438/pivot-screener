@@ -107,7 +107,7 @@ def score_symbol(df):
         vols = pd.to_numeric(df['volume'], errors='coerce').values
         recent_avg = float(np.mean(vols[-VOL_BUILD_BARS:]))
         prior_avg  = float(np.mean(vols[-VOL_BUILD_BARS-20:-VOL_BUILD_BARS]))
-        if prior_avg > 0 and recent_avg / prior_avg >= 2.0:
+        if prior_avg > 0 and recent_avg / prior_avg >= 1.3:
             vol_building_strong = True
 
     # need at least one active signal OR strong OBV+52WLow combo
@@ -182,6 +182,7 @@ def run_accumulation_scan(exchange='ALL', min_score=1, min_vol_ratio=0.0):
             results.append({
                 'Symbol':      sym,
                 'Exchange':    exch,
+                'Direction':   '🟢 Long',   # accumulation is always a bullish setup
                 'Price':       round(float(today['close']), 2),
                 'Score':       scored['score'],
                 'Signals':     scored['signals'],
@@ -241,27 +242,3 @@ if __name__ == "__main__":
         print(results[['Symbol', 'Price', 'Score', 'Signals',
                         'Vol Ratio']].head(20).to_string(index=False))
 
-if __name__ == "__main__":
-    import time
-    from data_fetcher import get_nse_ohlc, get_bse_ohlc
-    from history_store import preload_histories
-    day      = get_last_trading_day()
-    nse_syms = get_nse_ohlc(day)['symbol'].tolist()
-    bse_syms = get_bse_ohlc(day)['symbol'].tolist()
-    preload_histories(nse_syms, 'NSE', intervals=('1d',), lookback_bars=252)
-    preload_histories(bse_syms, 'BSE', intervals=('1d',), lookback_bars=252)
-    t0      = time.time()
-    results = run_accumulation_scan(exchange='BOTH', min_score=1)
-    t1      = time.time()
-    print(f"\nTime: {round(t1-t0, 1)}s — {len(results)} results")
-    if not results.empty:
-        print(f"\nScore breakdown:")
-        print(f"  Score 1: {len(results[results['Score']==1])}")
-        print(f"  Score 2: {len(results[results['Score']==2])}")
-        print(f"  Score 3: {len(results[results['Score']==3])}")
-        print(f"  Score 4: {len(results[results['Score']==4])}")
-        print(f"\nSignal counts:")
-        print(f"  Tight+Vol↑: {results['Tight+Vol↑'].eq('✅').sum()}")
-        print(f"  Vol Spike:  {results['Vol Spike'].eq('✅').sum()}")
-        print(f"  OBV↑:       {results['OBV↑'].eq('✅').sum()}")
-        print(f"  52W Low:    {results['52W Low'].eq('✅').sum()}")

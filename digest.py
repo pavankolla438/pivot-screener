@@ -23,13 +23,17 @@ def preload_all(cache_ref):
     day = get_last_trading_day()
     print(f"\n[Digest] Preloading all data for {day}...")
 
+    from market_context import UNIVERSE_MODE
     contexts = get_context('NSE')
     ctx = contexts.get('NSE')
     if ctx and ctx.daily is not None:
+        # ctx.daily already universe-filtered
         symbols = ctx.daily['symbol'].tolist()
         preload_histories(symbols, 'NSE', intervals=('1d','1wk'), lookback_bars=252)
         store_stats()
-    print("[Digest] NSE preload complete.")
+        print(f"[Digest] NSE preload complete — {len(symbols)} symbols (mode: {UNIVERSE_MODE}).")
+    else:
+        print("[Digest] NSE preload failed — no context.")
 
     from scanner import run_scan
     from darvas_scanner import run_darvas_scan
@@ -65,6 +69,28 @@ def preload_all(cache_ref):
 # PER-ROW BASE SCORES
 # ─────────────────────────────────────────
 
+def _inside_bar_duration_bonus(r):
+    """Bonus for longer compression inside mother bar. Cap +2."""
+    try:
+        n = int(r.get('Inside Bars', 0) or 0)
+    except (ValueError, TypeError):
+        n = 0
+    if n >= 4: return 2
+    if n == 3: return 1
+    return 0
+
+
+def _darvas_duration_bonus(r):
+    """Bonus for longer box consolidation before breakout. Cap +2."""
+    try:
+        weeks = int(r.get('Box Weeks', 0) or 0)
+    except (ValueError, TypeError):
+        weeks = 0
+    if weeks >= 8: return 2
+    if weeks >= 5: return 1
+    return 0
+
+
 def structure_score(r, scanner):
     s = 0
     if scanner == 'Pivot':
@@ -76,6 +102,7 @@ def structure_score(r, scanner):
         s += 2 if 'Horizontal' in str(r.get('Setup', '')) else 1
     elif scanner == 'Darvas':
         s += 2
+        s += _darvas_duration_bonus(r)   # +0/+1/+2 for box age
     elif scanner == 'Accumulation':
         s += min(int(r.get('Score', 0) or 0), 2)
     return s
@@ -88,6 +115,7 @@ def trigger_score(r, scanner):
         if trigger in ('Breakout', 'Breakdown'): s += 2
         elif trigger == 'Attempt':               s += 1
         if str(r.get('Both TF', '')).startswith('⭐'): s += 1
+        s += _inside_bar_duration_bonus(r)       # +0/+1/+2 for compression depth
     elif scanner == 'Darvas':
         if 'Fresh' in trigger or trigger == 'Breakout': s += 2
         elif 'Retest' in trigger:     s += 1
@@ -128,42 +156,53 @@ STRUCTURE_SCANNERS  = {'Pivot', 'Trendline', 'Darvas', 'Accumulation'}
 TRIGGER_SCANNERS    = {'Inside Bar'}
 MOMENTUM_SCANNERS   = {'Momentum'}
 
+# Tier 1 (+3): Structure + Trigger OR Trigger + Momentum — the classic setups
 TIER1_PAIRS = [
-    {'Inside Bar', 'Momentum'},
-    {'Accumulation', 'Inside Bar'},
-    {'Trendline', 'Inside Bar'},
-    {'Darvas', 'Inside Bar'},
-    {'Pivot', 'Inside Bar'},
+    {'Inside Bar', 'Momentum'},       # compression then momentum fire
+    {'Accumulation', 'Inside Bar'},   # vol buildup + coiling
+    {'Trendline', 'Inside Bar'},      # support + coiling
+    {'Darvas', 'Inside Bar'},         # box + coiling
+    {'Pivot', 'Inside Bar'},          # CPR + coiling
 ]
 
+# Tier 2 (+2): Structure + Momentum (no trigger) OR two strong structures
 TIER2_PAIRS = [
     {'Trendline', 'Momentum'},
     {'Pivot', 'Momentum'},
     {'Accumulation', 'Momentum'},
     {'Darvas', 'Momentum'},
-    {'Inside Bar', 'Accumulation'},
+    {'Darvas', 'Accumulation'},       # two structure signals agree — meaningful
+    {'Pivot', 'Accumulation'},        # CPR + vol buildup
+    {'Trendline', 'Accumulation'},    # support + vol buildup
+    {'Pivot', 'Darvas'},              # CPR + box level overlap
 ]
 
+# Tier 3 (+1): Single-category combos with less direct confluence
 TIER3_PAIRS = [
-    {'Trendline', 'Inside Bar'},
-    {'Pivot', 'Inside Bar'},
-    {'Pivot', 'Accumulation'},
-    {'Trendline', 'Accumulation'},
-    {'Darvas', 'Accumulation'},
-    {'Pivot', 'Darvas'},
+    {'Trendline', 'Pivot'},           # two support types (same as Pivot+Trendline above — keep for safety)
 ]
 
+# Setup label lookup — every possible 2-scanner combination must have an entry
+# to avoid falling through to random set element
 SETUP_LABELS = [
+    # Trigger combos (highest priority for 2-scanner)
     ({'Inside Bar', 'Momentum'},      'Compression Expansion'),
     ({'Accumulation', 'Inside Bar'},  'Accumulation + Compression'),
     ({'Trendline', 'Inside Bar'},     'Support + Compression'),
     ({'Darvas', 'Inside Bar'},        'Box Compression Breakout'),
     ({'Pivot', 'Inside Bar'},         'Pivot + Compression'),
+    # Momentum combos
     ({'Trendline', 'Momentum'},       'Trend Continuation'),
     ({'Accumulation', 'Momentum'},    'Accumulation + Momentum'),
     ({'Pivot', 'Momentum'},           'Pivot + Momentum'),
-    ({'Inside Bar', 'Accumulation'},  'Compression + Accumulation'),
     ({'Darvas', 'Momentum'},          'Box + Momentum'),
+    # Structure-only combos
+    ({'Darvas', 'Accumulation'},      'Darvas + Accumulation'),
+    ({'Pivot', 'Accumulation'},       'Pivot + Accumulation'),
+    ({'Trendline', 'Accumulation'},   'Support + Accumulation'),
+    ({'Pivot', 'Darvas'},             'Pivot + Darvas Box'),
+    ({'Pivot', 'Trendline'},          'Pivot + Trendline'),
+    ({'Trendline', 'Darvas'},         'Trendline + Darvas'),
 ]
 
 FULL_STACK_LABEL = 'Full Stack Setup 🔥'
@@ -261,6 +300,20 @@ def pick_top_setups(cache_ref, top_n=10):
                 best_per_scanner[sc] = r
 
         rep        = max(best_per_scanner.values(), key=lambda r: r['_raw'])
+
+        # Direction: use rep's direction if present, else borrow from another
+        # scanner row in the group — prioritise actionable over neutral scanners
+        rep_direction = rep.get('Direction', '')
+        if not rep_direction or str(rep_direction) in ('', 'nan'):
+            dir_priority = ['Darvas', 'Inside Bar', 'Momentum',
+                            'Trendline', 'Accumulation', 'Pivot']
+            for sc_name in dir_priority:
+                candidate = best_per_scanner.get(sc_name)
+                if candidate:
+                    d = candidate.get('Direction', '')
+                    if d and str(d) not in ('', 'nan'):
+                        rep_direction = d
+                        break
         total_base = sum(r['_base'] for r in best_per_scanner.values())
         vm         = rep['_vm']
         raw_score  = total_base * vm
@@ -271,7 +324,7 @@ def pick_top_setups(cache_ref, top_n=10):
             'Symbol':           sym,
             'Exchange':         exch,
             'Price':            rep.get('Price', ''),
-            'Direction':        rep.get('Direction', ''),
+            'Direction':        rep_direction,
             'Score':            round(final_score, 1),
             'Vol Ratio':        rep.get('Vol Ratio', ''),
             'Signals':          rep.get('Signals', rep.get('Trigger', rep.get('Setup', ''))),

@@ -121,18 +121,20 @@ def to_json(df):
     return jsonify({'count': len(df), 'data': df.to_dict(orient='records')})
 
 def ensure_preloaded():
-    key = f"ALL_{get_last_trading_day()}"
+    from market_context import UNIVERSE_MODE
+    key = f"ALL_{get_last_trading_day()}_{UNIVERSE_MODE}"
     if key in _preloaded:
         return
-    print(f"\n[Preload] Starting unified preload...")
+    print(f"\n[Preload] Starting preload (mode: {UNIVERSE_MODE})...")
     contexts = get_context('ALL')
     ctx = contexts.get('ALL')
     if ctx and ctx.daily is not None:
+        # ctx.daily is already universe-filtered — preload only what scanners will use
         symbols = ctx.daily['symbol'].tolist()
-        preload_histories(symbols, 'ALL', intervals=('1d','1wk'), lookback_bars=252)
+        preload_histories(symbols, 'NSE', intervals=('1d','1wk'), lookback_bars=252)
         store_stats()
     _preloaded.add(key)
-    print(f"[Preload] ALL complete.\n")
+    print(f"[Preload] Complete — {len(ctx.daily) if ctx and ctx.daily is not None else 0} symbols.\n")
 
 def run_and_enrich(scan_fn, **kwargs):
     df = scan_fn(**kwargs)

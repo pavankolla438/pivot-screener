@@ -151,6 +151,7 @@ def run_trendline_scan(exchange='BOTH'):
             results.append({
                 'Symbol':     sym,
                 'Exchange':   exch,
+                'Direction':  '🟢 Long',   # support bounce is always a long setup
                 'Price':      round(float(today['close']), 2),
                 'Setup':      best['type'],
                 'Level':      best['level'],

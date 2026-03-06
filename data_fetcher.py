@@ -6,7 +6,14 @@ from datetime import datetime, timedelta, date
 import zipfile
 import io
 
-DATA_DIR = r"C:\pivot_screener\data"
+# ─────────────────────────────────────────
+# DATA DIRECTORY  (bhavcopies, F&O list)
+# Reads DATA_ROOT env var — same root as cache_helper.py.
+# Locally: auto-uses a 'data' folder beside this file.
+# ─────────────────────────────────────────
+
+_DEFAULT_DATA_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+DATA_DIR = os.path.join(os.environ.get('DATA_ROOT', _DEFAULT_DATA_ROOT))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 NSE_HEADERS = {

@@ -3,8 +3,17 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 
-CACHE_DIR = r"C:\pivot_screener\data\yf_cache"
-os.makedirs(CACHE_DIR, exist_ok=True)
+# ─────────────────────────────────────────
+# DATA DIRECTORIES
+# Set DATA_ROOT env var to override (Railway: /data, Windows: C:\pivot_screener\data)
+# Default: a 'data' folder next to this file — works on any OS without config.
+# ─────────────────────────────────────────
+_DEFAULT_ROOT  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+DATA_ROOT      = os.environ.get('DATA_ROOT', _DEFAULT_ROOT)
+CACHE_DIR      = os.path.join(DATA_ROOT, 'yf_cache')
+BULK_CACHE_DIR = os.path.join(DATA_ROOT, 'bulk_cache')
+os.makedirs(CACHE_DIR,      exist_ok=True)
+os.makedirs(BULK_CACHE_DIR, exist_ok=True)
 
 def _cache_path(symbol, exchange, interval):
     today = datetime.today().strftime("%Y%m%d")
@@ -166,9 +175,6 @@ def clear_old_cache(days_to_keep=2):
 # ─────────────────────────────────────────
 # BULK CACHE — single file per interval
 # ─────────────────────────────────────────
-
-BULK_CACHE_DIR = r"C:\pivot_screener\data\bulk_cache"
-os.makedirs(BULK_CACHE_DIR, exist_ok=True)
 
 def _bulk_cache_path(exchange, interval):
     today = datetime.today().strftime("%Y%m%d")

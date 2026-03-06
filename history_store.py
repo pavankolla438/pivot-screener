@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from cache_helper import fetch_histories_batch, load_bulk_cache
 
@@ -135,7 +136,7 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                 print(f"[Store] {exch} {interval}: {len(missing)} missing, fetching...")
                 # for ALL exchange, fetch missing from NSE first then BSE
                 fetched = fetch_histories_batch(
-                    missing, exch if exch != 'ALL' else 'NSE',
+                    missing, 'NSE',
                     interval=interval,
                     lookback_bars=lookback_bars
                 )
@@ -183,7 +184,7 @@ def _save_bulk(combined_df, exchange, interval):
     path = _bulk_cache_path(exchange, interval)
     combined_df.to_parquet(path)
     syms = combined_df['_sym'].nunique()
-    print(f"[BulkCache] Saved {syms} symbols → {path.split(chr(92))[-1]}")
+    print(f"[BulkCache] Saved {syms} symbols → {os.path.basename(path)}")
 
 # ─────────────────────────────────────────
 # GET HISTORY — O(1) lookup
@@ -197,8 +198,9 @@ def get_history(symbol, exchange, interval='1d'):
             return df
     except KeyError:
         pass
+    # Always fall back to NSE — BSE removed
     from cache_helper import fetch_history_cached
-    return fetch_history_cached(symbol, exchange, interval=interval, lookback_bars=252)
+    return fetch_history_cached(symbol, 'NSE', interval=interval, lookback_bars=252)
 
 
 # ─────────────────────────────────────────
