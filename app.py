@@ -122,14 +122,13 @@ def to_json(df):
 
 def ensure_preloaded():
     from market_context import UNIVERSE_MODE
-    key = f"ALL_{get_last_trading_day()}_{UNIVERSE_MODE}"
+    key = f"NSE_{get_last_trading_day()}_{UNIVERSE_MODE}"
     if key in _preloaded:
         return
     print(f"\n[Preload] Starting preload (mode: {UNIVERSE_MODE})...")
     contexts = get_context('ALL')
-    ctx = contexts.get('ALL')
+    ctx = contexts.get('NSE')          # get_context() always returns {'NSE': ...}
     if ctx and ctx.daily is not None:
-        # ctx.daily is already universe-filtered — preload only what scanners will use
         symbols = ctx.daily['symbol'].tolist()
         preload_histories(symbols, 'NSE', intervals=('1d','1wk'), lookback_bars=252)
         store_stats()

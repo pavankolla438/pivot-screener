@@ -99,29 +99,33 @@ def check_confluence(symbol, exchange, mother_high, mother_low, current_price):
     tags = []
 
     # ── 1. CPR Confluence ──
+    # BSE removed — NSE only. Use weekly/monthly OHLC to compute per-symbol pivots.
     try:
-        from data_fetcher import get_weekly_ohlc_nse, get_weekly_ohlc_bse
-        from data_fetcher import get_monthly_ohlc_nse, get_monthly_ohlc_bse
+        from data_fetcher import get_weekly_ohlc_nse, get_monthly_ohlc_nse
         from pivot_calculator import calculate_pivots
         for tf_label, ohlc_fn in [
-            ('Weekly CPR',  get_weekly_ohlc_nse  if exchange == 'NSE' else get_weekly_ohlc_bse),
-            ('Monthly CPR', get_monthly_ohlc_nse if exchange == 'NSE' else get_monthly_ohlc_bse),
+            ('Weekly CPR',  get_weekly_ohlc_nse),
+            ('Monthly CPR', get_monthly_ohlc_nse),
         ]:
-            try:
-                ohlc = ohlc_fn(symbol) if exchange == 'NSE' else ohlc_fn(symbol)
-                if ohlc is not None:
-                    pivots = calculate_pivots(ohlc['high'], ohlc['low'], ohlc['close'])
-                    for level_name in ['P', 'TC', 'BC']:
-                        level = pivots.get(level_name)
-                        if level and (is_near(mother_high, level) or
-                                      is_near(mother_low,  level) or
-                                      is_near(current_price, level)):
-                            tags.append(tf_label)
-                            break
-            except Exception:
-                pass
+            ohlc = ohlc_fn()
+            if ohlc is None or ohlc.empty:
+                continue
+            sym_row = ohlc[ohlc['symbol'] == symbol]
+            if sym_row.empty:
+                continue
+            pivots = calculate_pivots(sym_row)
+            if pivots.empty:
+                continue
+            p_row = pivots.iloc[0]
+            for level_name in ['P', 'TC', 'BC']:
+                level = p_row.get(level_name)
+                if level and (is_near(mother_high, level) or
+                              is_near(mother_low,  level) or
+                              is_near(current_price, level)):
+                    tags.append(tf_label)
+                    break
     except Exception:
-        pass
+        pass  # CPR data unavailable — non-fatal
 
     # ── 2. Darvas Box Confluence ──
     try:

@@ -28,7 +28,7 @@ def get_prev_close(symbol, exchange):
     if df is None or df.empty or len(df) < 2:
         return None
     val = df.iloc[-2]['close']
-    # Guard against duplicate index producing a Series instead of scalar
+    # Guard against duplicate index returning a Series instead of scalar
     if hasattr(val, '__len__'):
         val = val.iloc[-1]
     return float(val)
@@ -188,9 +188,12 @@ def run_darvas_scan(exchange='ALL', direction='BOTH'):
             if weekly is None or len(weekly) < MIN_BOX_WEEKS + 1:
                 continue
 
+            # Compute boxes once — reused in both LONG and SHORT paths
+            acc_boxes  = find_accumulation_boxes(weekly)
+            dist_boxes = find_distribution_boxes(weekly) if direction in ('SHORT', 'BOTH') else []
+
             # ── LONG ──
             if direction in ('LONG', 'BOTH'):
-                acc_boxes = find_accumulation_boxes(weekly)
                 if acc_boxes:
                     box     = acc_boxes[-1]
                     trigger = check_long_trigger(current_price, today_high, prev_close, box)
@@ -213,7 +216,6 @@ def run_darvas_scan(exchange='ALL', direction='BOTH'):
 
             # ── SHORT ──
             if direction in ('SHORT', 'BOTH'):
-                acc_boxes = find_accumulation_boxes(weekly)
                 if acc_boxes:
                     box     = acc_boxes[-1]
                     trigger = check_short_trigger(current_price, today_low, prev_close, box)
@@ -234,7 +236,6 @@ def run_darvas_scan(exchange='ALL', direction='BOTH'):
                         })
                         flagged += 1
 
-                dist_boxes = find_distribution_boxes(weekly)
                 if dist_boxes:
                     box     = dist_boxes[-1]
                     trigger = check_short_trigger(current_price, today_low, prev_close, box)
