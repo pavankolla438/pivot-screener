@@ -49,11 +49,24 @@ _BOND_YEAR = re.compile(r'\d{4}$')
 # 7. Bharat Bond ETF series ending in B+2digits (ICICIB22, ICICIB30 etc.)
 _BHARAT_BOND = re.compile(r'B\d{2}$', re.IGNORECASE)
 
-# 8. Unambiguous AMC-only prefixes
+# 8. Unambiguous AMC-only prefixes (no operating company uses these)
 _AMC_ONLY = re.compile(
     r'^(BSL[A-Z]+|MOTILALOFS[A-Z]*|GROWW[A-Z]{3,}|'
     r'MIRAE[A-Z]{3,}|ABSL[A-Z]{3,}|NIPPON[A-Z]{4,}|'
     r'KOTAKPSU|KOTAKSILVE|KOTAKGOLD)',
+    re.IGNORECASE
+)
+
+# 11. AMC prefix + factor/strategy suffix = Smart Beta / Factor ETF
+#     e.g. HDFCQUAL, HDFCMOMENT, ICICIQUAL, KOTAKQUAL, SBIPSU
+_AMC_PREFIX_PAT  = re.compile(
+    r'^(HDFC|ICICI|KOTAK|AXIS|SBI|UTI|DSP|FRANKLIN|NIPPON|MIRAE|ABSL|BSL|EDELWEISS|GROWW|MOTILAL|BARODA)',
+    re.IGNORECASE
+)
+_FACTOR_SUFF_PAT = re.compile(
+    r'(QUAL|MOMENT|MOMENTM|VALUE|GROWTH|LOWVOL|LOWVOLAT|ALPHA|DIVYIELD|'
+    r'MULTI|EQUALWT|MOMENTUM|QUALITY|PVTBANK|PSUBANK|CPSE|PSE|PSU|'
+    r'SHARIAH|ESG|INFRA|METAL|REALTY|ENERGY|FMCG|CONSUMP)$',
     re.IGNORECASE
 )
 
@@ -74,6 +87,7 @@ def _is_non_equity(symbol: str) -> bool:
         bool(_BOND_YEAR.search(symbol))     or
         bool(_BHARAT_BOND.search(symbol))   or
         bool(_AMC_ONLY.match(symbol))       or
+        bool(_AMC_PREFIX_PAT.match(symbol) and _FACTOR_SUFF_PAT.search(symbol)) or
         bool(_NUMERIC.match(symbol))        or
         bool(_TOO_LONG.match(symbol))
     )
