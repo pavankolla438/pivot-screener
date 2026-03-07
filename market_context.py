@@ -16,31 +16,40 @@ UNIVERSE_MODE = os.environ.get('UNIVERSE_MODE', 'CASH_AND_FNO').upper()
 MIN_PRICE     = float(os.environ.get('MIN_PRICE', '20'))
 
 # ─────────────────────────────────────────
-# NON-EQUITY FILTER — 7 layers
+# NON-EQUITY FILTER — 10 layers
 # Removes ETFs, index funds, SGBs, G-Secs, debt instruments, junk symbols.
-# Each layer targets a distinct instrument class.
 # ─────────────────────────────────────────
 
-# 1. Explicit ETF/fund suffixes
+# 1. ETF substring anywhere (catches EBBETF0433, BBETF0432, mid-name ETFs)
+_ETF_ANYWHERE = re.compile(r'ETF', re.IGNORECASE)
+
+# 2. ETF/fund suffixes
 _ETF_SUFFIX = re.compile(
-    r'(ETF|BEES|REIT|INVIT|LIQUIDBEES|LIQUIDCASE|LIQUID|GILT|CASE|'
-    r'JUNIOR|MANIA|SETF|GETF|IETF|MONQ|MAFANG|1D|DTB|N50|NN50|NN50ET|ADD)$',
+    r'(BEES|REIT|INVIT|LIQUIDBEES|LIQUIDCASE|LIQUID|GILT|CASE|'
+    r'JUNIOR|MANIA|SETF|GETF|IETF|MONQ|MAFANG|1D|DTB|'
+    r'N50|NN50|NN50ET|ADD|GOLD|SILVER|BETA|TOP50|TOP100|MOM\d+)$',
     re.IGNORECASE
 )
 
-# 2. Index keyword anywhere in symbol (catches ICICIMIDCAP, HDFCNIFTY50, SETFNN50 etc.)
+# 3. Index keyword anywhere
 _INDEX_KEYWORD = re.compile(
-    r'(NIFTY|SENSEX|BANKEX|MIDCAP|SMALLCAP|NEXT50|MIDSMALL|NN50)',
+    r'(NIFTY|SENSEX|BANKEX|MIDCAP|SMALLCAP|NEXT50|MIDSMALL|NN50|MAKEINDIA)',
     re.IGNORECASE
 )
 
-# 3. Sovereign Gold Bonds
+# 4. Sovereign Gold Bonds
 _SGB = re.compile(r'^SGB', re.IGNORECASE)
 
-# 4. G-Secs / T-bills
+# 5. G-Secs / T-bills
 _GSEC = re.compile(r'(\d+\.\d+GS\d{4}|GS\d{4})', re.IGNORECASE)
 
-# 5. Unambiguous AMC-only prefixes (these entities list no operating company stocks)
+# 6. Bharat Bond / year-coded instruments ending in 4 digits (e.g. 0433, 0432)
+_BOND_YEAR = re.compile(r'\d{4}$')
+
+# 7. Bharat Bond ETF series ending in B+2digits (ICICIB22, ICICIB30 etc.)
+_BHARAT_BOND = re.compile(r'B\d{2}$', re.IGNORECASE)
+
+# 8. Unambiguous AMC-only prefixes
 _AMC_ONLY = re.compile(
     r'^(BSL[A-Z]+|MOTILALOFS[A-Z]*|GROWW[A-Z]{3,}|'
     r'MIRAE[A-Z]{3,}|ABSL[A-Z]{3,}|NIPPON[A-Z]{4,}|'
@@ -48,19 +57,22 @@ _AMC_ONLY = re.compile(
     re.IGNORECASE
 )
 
-# 6. Pure numeric symbols (debt instruments, T-bills)
+# 9. Pure numeric symbols
 _NUMERIC = re.compile(r'^\d+$')
 
-# 7. Symbols >12 chars are almost always ETF/MF names, not operating company stocks
+# 10. Symbols >12 chars
 _TOO_LONG = re.compile(r'^.{13,}$')
 
 
 def _is_non_equity(symbol: str) -> bool:
     return (
+        bool(_ETF_ANYWHERE.search(symbol))  or
         bool(_ETF_SUFFIX.search(symbol))    or
         bool(_INDEX_KEYWORD.search(symbol)) or
         bool(_SGB.match(symbol))            or
         bool(_GSEC.search(symbol))          or
+        bool(_BOND_YEAR.search(symbol))     or
+        bool(_BHARAT_BOND.search(symbol))   or
         bool(_AMC_ONLY.match(symbol))       or
         bool(_NUMERIC.match(symbol))        or
         bool(_TOO_LONG.match(symbol))
