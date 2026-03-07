@@ -4,3 +4,7 @@ __pycache__/
 *.parquet
 *.csv
 .env
+__pycache__/
+*.pyc
+*.pyo
+
