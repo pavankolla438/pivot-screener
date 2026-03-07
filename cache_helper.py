@@ -173,9 +173,11 @@ os.makedirs(BULK_CACHE_DIR, exist_ok=True)
 def _bulk_cache_path(exchange, interval):
     # Normalize exchange — 'ALL'/'BOTH' are logical groupings but data is always NSE.
     # Fixed key prevents cache misses when exchange label changes between runs.
-    exch  = 'NSE' if exchange in ('ALL', 'BOTH') else exchange
-    today = datetime.today().strftime("%Y%m%d")
-    return os.path.join(BULK_CACHE_DIR, f"{exch}_{interval}_{today}.parquet")
+    exch = 'NSE' if exchange in ('ALL', 'BOTH') else exchange
+    # Use last trading day (not today) so cache stays valid over weekends/holidays.
+    from data_fetcher import get_last_trading_day
+    day = get_last_trading_day().strftime("%Y%m%d")
+    return os.path.join(BULK_CACHE_DIR, f"{exch}_{interval}_{day}.parquet")
 
 def save_bulk_cache(data_dict, exchange, interval):
     """
