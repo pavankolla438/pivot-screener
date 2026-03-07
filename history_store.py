@@ -1,4 +1,3 @@
-import os
 import pandas as pd
 from cache_helper import fetch_histories_batch, load_bulk_cache
 
@@ -33,6 +32,9 @@ def _build_index(exchange, interval):
         df = grp.drop(columns=['_sym'])
         df.index = pd.to_datetime(df.index)
         df = df.sort_index()
+        # Drop duplicate dates — yfinance occasionally produces them for
+        # splits/adjustments. Keep last occurrence (most recent adjustment).
+        df = df[~df.index.duplicated(keep='last')]
         idx[sym] = df
     _index[exchange][interval] = idx
     print(f"[Index] {exchange} {interval}: {len(idx)} symbols indexed")
@@ -124,7 +126,10 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                     _build_index(exch, interval)
                 key = f"{exch}_{interval}"
                 if key not in _swing_cache:
-                    _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
+                    if interval == '1wk':
+                        _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
+                    else:
+                        _build_swing_cache(exch, interval, window=5, min_prominence_pct=0.5)
                 continue
 
         combined = load_bulk_cache(exch, interval)
@@ -173,7 +178,10 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                 _store[exch][interval] = None
 
         _build_index(exch, interval)
-        _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
+        if interval == '1wk':
+            _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
+        else:
+            _build_swing_cache(exch, interval, window=5, min_prominence_pct=0.5)
 
         if _store[exch][interval] is not None:
             valid = _store[exch][interval]['_sym'].nunique()
