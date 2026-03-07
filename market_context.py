@@ -60,13 +60,19 @@ _AMC_ONLY = re.compile(
 # 11. AMC prefix + factor/strategy suffix = Smart Beta / Factor ETF
 #     e.g. HDFCQUAL, HDFCMOMENT, ICICIQUAL, KOTAKQUAL, SBIPSU
 _AMC_PREFIX_PAT  = re.compile(
-    r'^(HDFC|ICICI|KOTAK|AXIS|SBI|UTI|DSP|FRANKLIN|NIPPON|MIRAE|ABSL|BSL|EDELWEISS|GROWW|MOTILAL|BARODA)',
+    r'^(HDFC|ICICI|KOTAK|AXIS|SBI|UTI|DSP|FRANKLIN|NIPPON|MIRAE|ABSL|BSL|EDELWEISS|GROWW|MOTILAL|BARODA|MO)',
     re.IGNORECASE
 )
 _FACTOR_SUFF_PAT = re.compile(
     r'(QUAL|MOMENT|MOMENTM|VALUE|GROWTH|LOWVOL|LOWVOLAT|ALPHA|DIVYIELD|'
     r'MULTI|EQUALWT|MOMENTUM|QUALITY|PVTBANK|PSUBANK|CPSE|PSE|PSU|'
-    r'SHARIAH|ESG|INFRA|METAL|REALTY|ENERGY|FMCG|CONSUMP)$',
+    r'SHARIAH|ESG|INFRA|METAL|REALTY|ENERGY|FMCG|CONSUMP|HEALTH|FSL|N500|NQ50|NQ100)$',
+    re.IGNORECASE
+)
+
+# 12. Standalone strategy words that are full ETF names (e.g. MOMENTUM, QUALITY)
+_STANDALONE_STRATEGY = re.compile(
+    r'^(MOMENTUM|QUALITY|ALPHA|DIVIDEND|LOWVOL|CONSUMPTION)$',
     re.IGNORECASE
 )
 
@@ -88,6 +94,7 @@ def _is_non_equity(symbol: str) -> bool:
         bool(_BHARAT_BOND.search(symbol))   or
         bool(_AMC_ONLY.match(symbol))       or
         bool(_AMC_PREFIX_PAT.match(symbol) and _FACTOR_SUFF_PAT.search(symbol)) or
+        bool(_STANDALONE_STRATEGY.match(symbol)) or
         bool(_NUMERIC.match(symbol))        or
         bool(_TOO_LONG.match(symbol))
     )
