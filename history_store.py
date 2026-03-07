@@ -152,8 +152,8 @@ def _load_swing_cache(exchange, interval):
 def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=252):
     global _store
 
-    # normalize exchange key
-    exch = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
+    # normalize exchange key — everything is NSE data
+    exch = 'NSE' if exchange in ('BOTH', 'ALL', 'NSE') else exchange
 
     if exch not in _store:
         _store[exch] = {}
@@ -201,10 +201,8 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
             _store[exch][interval] = combined
         else:
             print(f"[Store] {exch} {interval}: no bulk cache, fetching all...")
-            # for ALL, fetch from NSE (yfinance handles both)
-            fetch_exch = exch if exch != 'ALL' else 'NSE'
             fetched = fetch_histories_batch(
-                symbols, fetch_exch,
+                symbols, exch,
                 interval=interval,
                 lookback_bars=lookback_bars
             )
@@ -246,7 +244,7 @@ def _save_bulk(combined_df, exchange, interval):
 # ─────────────────────────────────────────
 
 def get_history(symbol, exchange, interval='1d'):
-    exch = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
+    exch = 'NSE' if exchange in ('BOTH', 'ALL', 'NSE') else exchange
     try:
         df = _index[exch][interval].get(symbol)
         if df is not None:
@@ -263,7 +261,7 @@ def get_history(symbol, exchange, interval='1d'):
 # ─────────────────────────────────────────
 
 def get_all_histories(exchange, interval='1d'):
-    exch = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
+    exch = 'NSE' if exchange in ('BOTH', 'ALL', 'NSE') else exchange
     try:
         return _index[exch][interval]
     except KeyError:
@@ -274,7 +272,7 @@ def get_all_histories(exchange, interval='1d'):
 # ─────────────────────────────────────────
 
 def get_swing_points(symbol, exchange, interval='1d'):
-    exch  = 'ALL' if exchange in ('BOTH', 'ALL') else exchange
+    exch  = 'NSE' if exchange in ('BOTH', 'ALL', 'NSE') else exchange
     key   = f"{exch}_{interval}"
     entry = _swing_cache.get(key, {}).get(symbol, {})
     return (
