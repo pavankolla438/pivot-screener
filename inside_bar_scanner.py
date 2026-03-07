@@ -95,28 +95,21 @@ def is_near(price, level, pct=1.0):
         return False
     return abs(price - level) / level * 100 <= pct
 
-def check_confluence(symbol, exchange, mother_high, mother_low, current_price):
+def check_confluence(symbol, exchange, mother_high, mother_low, current_price,
+                     weekly_pivots=None, monthly_pivots=None):
     tags = []
 
     # ── 1. CPR Confluence ──
-    # BSE removed — NSE only. Use weekly/monthly OHLC to compute per-symbol pivots.
-    try:
-        from data_fetcher import get_weekly_ohlc_nse, get_monthly_ohlc_nse
-        from pivot_calculator import calculate_pivots
-        for tf_label, ohlc_fn in [
-            ('Weekly CPR',  get_weekly_ohlc_nse),
-            ('Monthly CPR', get_monthly_ohlc_nse),
-        ]:
-            ohlc = ohlc_fn()
-            if ohlc is None or ohlc.empty:
+    # weekly_pivots / monthly_pivots are pre-indexed DataFrames (symbol → pivot row)
+    # computed once in run_inside_bar_scan — zero I/O here, just dict lookup.
+    for tf_label, pivots_df in [
+        ('Weekly CPR',  weekly_pivots),
+        ('Monthly CPR', monthly_pivots),
+    ]:
+        try:
+            if pivots_df is None or symbol not in pivots_df.index:
                 continue
-            sym_row = ohlc[ohlc['symbol'] == symbol]
-            if sym_row.empty:
-                continue
-            pivots = calculate_pivots(sym_row)
-            if pivots.empty:
-                continue
-            p_row = pivots.iloc[0]
+            p_row = pivots_df.loc[symbol]
             for level_name in ['P', 'TC', 'BC']:
                 level = p_row.get(level_name)
                 if level and (is_near(mother_high, level) or
@@ -124,8 +117,8 @@ def check_confluence(symbol, exchange, mother_high, mother_low, current_price):
                               is_near(current_price, level)):
                     tags.append(tf_label)
                     break
-    except Exception:
-        pass  # CPR data unavailable — non-fatal
+        except Exception:
+            pass
 
     # ── 2. Darvas Box Confluence ──
     try:
@@ -175,6 +168,22 @@ def run_inside_bar_scan(exchange='ALL', direction='BOTH', n=DEFAULT_N):
     results  = []
     contexts = get_context('ALL')
 
+    # Pre-compute weekly + monthly pivot tables ONCE, indexed by symbol.
+    # Avoids 2×N file reads inside check_confluence (was causing 23s → ~2s).
+    _weekly_pivots  = None
+    _monthly_pivots = None
+    try:
+        from data_fetcher import get_weekly_ohlc_nse, get_monthly_ohlc_nse
+        from pivot_calculator import calculate_pivots
+        w_ohlc = get_weekly_ohlc_nse()
+        m_ohlc = get_monthly_ohlc_nse()
+        if w_ohlc is not None and not w_ohlc.empty:
+            _weekly_pivots  = calculate_pivots(w_ohlc).set_index('symbol')
+        if m_ohlc is not None and not m_ohlc.empty:
+            _monthly_pivots = calculate_pivots(m_ohlc).set_index('symbol')
+    except Exception:
+        pass  # CPR tags will simply be absent — non-fatal
+
     for exch, ctx in contexts.items():
         if ctx is None or ctx.daily is None:
             print(f"[{exch}] No context available, skipping.")
@@ -215,7 +224,9 @@ def run_inside_bar_scan(exchange='ALL', direction='BOTH', n=DEFAULT_N):
             cf_tags        = check_confluence(sym, exch,
                                               best['mother_high'],
                                               best['mother_low'],
-                                              current_price)
+                                              current_price,
+                                              weekly_pivots=_weekly_pivots,
+                                              monthly_pivots=_monthly_pivots)
             confluence_str = ' + '.join(cf_tags) if cf_tags else ''
 
             results.append({

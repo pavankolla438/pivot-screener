@@ -16,49 +16,54 @@ UNIVERSE_MODE = os.environ.get('UNIVERSE_MODE', 'CASH_AND_FNO').upper()
 MIN_PRICE     = float(os.environ.get('MIN_PRICE', '20'))
 
 # ─────────────────────────────────────────
-# 7-LAYER NON-EQUITY FILTER
-# Each layer targets a distinct category of non-stock instruments.
+# NON-EQUITY FILTER — 7 layers
+# Removes ETFs, index funds, SGBs, G-Secs, debt instruments, junk symbols.
+# Each layer targets a distinct instrument class.
 # ─────────────────────────────────────────
 
-# 1. ETF suffixes
+# 1. Explicit ETF/fund suffixes
 _ETF_SUFFIX = re.compile(
-    r'(ETF|BEES|SENETF|REIT|INVIT|LIQUIDBEES|LIQUIDCASE|LIQUID|GILT|CASE|'
-    r'JUNIOR|MANIA|SETF|GETF|IETF|MONQ|MAFANG|1D|DTB)$',
+    r'(ETF|BEES|REIT|INVIT|LIQUIDBEES|LIQUIDCASE|LIQUID|GILT|CASE|'
+    r'JUNIOR|MANIA|SETF|GETF|IETF|MONQ|MAFANG|1D|DTB|N50|NN50|NN50ET)$',
     re.IGNORECASE
 )
 
-# 2. Index trackers — NIFTY/SENSEX/BANKEX anywhere in symbol
-_INDEX_TRACKER = re.compile(r'(NIFTY|SENSEX|BANKEX)', re.IGNORECASE)
+# 2. Index keyword anywhere in symbol (catches ICICIMIDCAP, HDFCNIFTY50, SETFNN50 etc.)
+_INDEX_KEYWORD = re.compile(
+    r'(NIFTY|SENSEX|BANKEX|MIDCAP|SMALLCAP|NEXT50|MIDSMALL|NN50)',
+    re.IGNORECASE
+)
 
-# 3. Sovereign Gold Bonds — SGB + date pattern
+# 3. Sovereign Gold Bonds
 _SGB = re.compile(r'^SGB', re.IGNORECASE)
 
-# 4. G-Secs and T-bills
-_GSEC = re.compile(r'(\d+\.\d+GS\d{4}|GS\d{4}|^[0-9]{2}[A-Z]{2}\d{4}$)', re.IGNORECASE)
+# 4. G-Secs / T-bills
+_GSEC = re.compile(r'(\d+\.\d+GS\d{4}|GS\d{4})', re.IGNORECASE)
 
-# 5. AMC-prefixed index funds (BSLSENETFG, ICICIMIDCAP, HDFCNIFTY etc.)
-_AMC_INDEX = re.compile(
-    r'^(BSL|ICICI|HDFC|NIPPON|AXIS|MIRAE|ABSL|KOTAK|SBI|UTI|TATA|GROWW|DSP)'
-    r'.{0,8}(NIFTY|SENSEX|MIDCAP|SMALLCAP|NEXT50|LIQUID|GILT)',
+# 5. Unambiguous AMC-only prefixes (these entities list no operating company stocks)
+_AMC_ONLY = re.compile(
+    r'^(BSL[A-Z]+|MOTILALOFS[A-Z]*|GROWW[A-Z]{3,}|'
+    r'MIRAE[A-Z]{3,}|ABSL[A-Z]{3,}|NIPPON[A-Z]{4,}|'
+    r'KOTAKPSU|KOTAKSILVE|KOTAKGOLD)',
     re.IGNORECASE
 )
 
-# 6. Index numeric suffixes (SMALL250, MID150, NEXT50)
-_INDEX_NUMERIC = re.compile(r'(SMALL250|MID150|NEXT50|MIDSMALL)', re.IGNORECASE)
+# 6. Pure numeric symbols (debt instruments, T-bills)
+_NUMERIC = re.compile(r'^\d+$')
 
-# 7. Purely numeric symbols (T-bills like 91DTB etc handled above; pure numbers are debt)
-_NUMERIC_SYMBOL = re.compile(r'^\d+$')
+# 7. Symbols >12 chars are almost always ETF/MF names, not operating company stocks
+_TOO_LONG = re.compile(r'^.{13,}$')
 
 
 def _is_non_equity(symbol: str) -> bool:
     return (
         bool(_ETF_SUFFIX.search(symbol))    or
-        bool(_INDEX_TRACKER.search(symbol)) or
+        bool(_INDEX_KEYWORD.search(symbol)) or
         bool(_SGB.match(symbol))            or
         bool(_GSEC.search(symbol))          or
-        bool(_AMC_INDEX.match(symbol))      or
-        bool(_INDEX_NUMERIC.search(symbol)) or
-        bool(_NUMERIC_SYMBOL.match(symbol))
+        bool(_AMC_ONLY.match(symbol))       or
+        bool(_NUMERIC.match(symbol))        or
+        bool(_TOO_LONG.match(symbol))
     )
 
 
@@ -69,9 +74,9 @@ def get_fo_symbol_set():
 
 def apply_universe_filter(daily_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filter daily OHLC DataFrame to configured universe.
-    Called once per MarketContext build — all scanners see the filtered universe.
-    Steps: non-equity removal → price < MIN_PRICE → FNO_ONLY (if set)
+    Filter daily OHLC to configured universe.
+    Called once per MarketContext build — all scanners see the filtered result.
+    Steps: non-equity removal → price < MIN_PRICE → FNO_ONLY (if configured)
     """
     if daily_df is None or daily_df.empty:
         return daily_df
@@ -86,7 +91,7 @@ def apply_universe_filter(daily_df: pd.DataFrame) -> pd.DataFrame:
     daily_df = daily_df[daily_df['close'] >= MIN_PRICE].reset_index(drop=True)
     after_price = len(daily_df)
 
-    # Step 3 — FNO_ONLY filter (optional)
+    # Step 3 — FNO_ONLY subsetting (optional)
     if UNIVERSE_MODE == 'FNO_ONLY':
         fo_syms = get_fo_symbol_set()
         if fo_syms:
