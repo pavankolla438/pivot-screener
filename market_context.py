@@ -13,71 +13,56 @@ _context_cache = {}
 # ─────────────────────────────────────────
 
 UNIVERSE_MODE = os.environ.get('UNIVERSE_MODE', 'CASH_AND_FNO').upper()
+MIN_PRICE     = float(os.environ.get('MIN_PRICE', '20'))
 
-# Minimum price — stocks below this are excluded (saves scan time on illiquid trash)
-MIN_PRICE = float(os.environ.get('MIN_PRICE', '20'))
+# ─────────────────────────────────────────
+# 7-LAYER NON-EQUITY FILTER
+# Each layer targets a distinct category of non-stock instruments.
+# ─────────────────────────────────────────
 
-# ── Filter 1: Suffix-based ETF/fund/bond patterns ──
-# Catches symbols ending in known non-equity suffixes
+# 1. ETF suffixes
 _ETF_SUFFIX = re.compile(
-    r'(ETF|BEES|LIQUID|GILT|SETF|GETF|IETF|SENETF|'
-    r'BANKBEES|GOLDBEES|SILVERBEES|LIQUIDCASE|LIQUIDBEES|OVERNIGHT|'
-    r'REIT|INVIT|\d+DTB|\d+TB|1D|0432|0423)$',
+    r'(ETF|BEES|SENETF|REIT|INVIT|LIQUIDBEES|LIQUIDCASE|LIQUID|GILT|CASE|'
+    r'JUNIOR|MANIA|SETF|GETF|IETF|MONQ|MAFANG|1D|DTB)$',
     re.IGNORECASE
 )
 
-# ── Filter 2: Index-tracker keywords anywhere in symbol ──
-# SENSEXBETA, BANKNIFTY1, NIFTYBEES etc.
-_INDEX_TRACKER = re.compile(
-    r'NIFTY|SENSEX|BANKEX|MONQ|MAFANG|JUNIOR|MANIA',
-    re.IGNORECASE
-)
+# 2. Index trackers — NIFTY/SENSEX/BANKEX anywhere in symbol
+_INDEX_TRACKER = re.compile(r'(NIFTY|SENSEX|BANKEX)', re.IGNORECASE)
 
-# ── Filter 3: Sovereign Gold Bonds (SGBOCT26, SGBJUN28 …) ──
-_SGB = re.compile(r'^SGB[A-Z]{3}\d{2}$', re.IGNORECASE)
+# 3. Sovereign Gold Bonds — SGB + date pattern
+_SGB = re.compile(r'^SGB', re.IGNORECASE)
 
-# ── Filter 4: G-Secs and T-bills (GS2034, GSEC2028, 7.26GS2029 …) ──
-_GSEC = re.compile(r'^(GS\d{4}|GSEC\d{4}|\d+\.\d+GS\d{4})$', re.IGNORECASE)
+# 4. G-Secs and T-bills
+_GSEC = re.compile(r'(\d+\.\d+GS\d{4}|GS\d{4}|^[0-9]{2}[A-Z]{2}\d{4}$)', re.IGNORECASE)
 
-# ── Filter 5: AMC-prefixed index fund names ──
-# Catches HDFCNIFTY, ICICIMIDCAP, BSLSENETFG, NIPPONNIFTY etc.
-# Uses {0,8} connector to allow for zero or short connectors between AMC and index word.
-# Keeps HDFCBANK, SBICARD, ICICIPRU as real equities.
+# 5. AMC-prefixed index funds (BSLSENETFG, ICICIMIDCAP, HDFCNIFTY etc.)
 _AMC_INDEX = re.compile(
-    r'^(BSL|SBI|HDFC|ICICI|NIPPON|AXIS|MIRAE|ABSL|GROWW|UTI|KOTAK|TATA|'
-    r'EDELWEISS|MOTILAL|DSP|INVESCO)'
-    r'.{0,8}'
-    r'(NIFTY|SENSEX|MIDCAP|SMALLCAP|SMALL|INFRA|PHARMA|FMCG|METAL|REALTY|'
-    r'ALPHA|QUALITY|VALUE|MOMENTUM|LOWVOL|EQUAL|INDEX|NEXT50|SENETF)',
+    r'^(BSL|ICICI|HDFC|NIPPON|AXIS|MIRAE|ABSL|KOTAK|SBI|UTI|TATA|GROWW|DSP)'
+    r'.{0,8}(NIFTY|SENSEX|MIDCAP|SMALLCAP|NEXT50|LIQUID|GILT)',
     re.IGNORECASE
 )
 
-# ── Filter 6: Pure index-number symbols (SMALL250, NEXT50, MID150 …) ──
-_INDEX_NUMERIC = re.compile(r'^(SMALL|MID|LARGE|NEXT|MICRO)\d+$', re.IGNORECASE)
+# 6. Index numeric suffixes (SMALL250, MID150, NEXT50)
+_INDEX_NUMERIC = re.compile(r'(SMALL250|MID150|NEXT50|MIDSMALL)', re.IGNORECASE)
 
-# ── Filter 7: Purely numeric symbols (bond ISINs etc.) ──
+# 7. Purely numeric symbols (T-bills like 91DTB etc handled above; pure numbers are debt)
 _NUMERIC_SYMBOL = re.compile(r'^\d+$')
 
 
 def _is_non_equity(symbol: str) -> bool:
-    """Returns True if symbol is an ETF, index fund, bond, SGB, or other non-tradeable."""
-    if _NUMERIC_SYMBOL.match(symbol):    return True
-    if _ETF_SUFFIX.search(symbol):       return True
-    if _INDEX_TRACKER.search(symbol):    return True
-    if _SGB.match(symbol):               return True
-    if _GSEC.match(symbol):              return True
-    if _AMC_INDEX.match(symbol):         return True
-    if _INDEX_NUMERIC.match(symbol):     return True
-    return False
-
-
-# Legacy alias — used by FNO_ONLY path
-def _is_etf(symbol: str) -> bool:
-    return _is_non_equity(symbol)
+    return (
+        bool(_ETF_SUFFIX.search(symbol))    or
+        bool(_INDEX_TRACKER.search(symbol)) or
+        bool(_SGB.match(symbol))            or
+        bool(_GSEC.search(symbol))          or
+        bool(_AMC_INDEX.match(symbol))      or
+        bool(_INDEX_NUMERIC.search(symbol)) or
+        bool(_NUMERIC_SYMBOL.match(symbol))
+    )
 
 
 def get_fo_symbol_set():
-    """Returns F&O symbol set, cached for process lifetime."""
     from data_fetcher import get_fo_symbols
     return get_fo_symbols()
 
@@ -85,56 +70,36 @@ def get_fo_symbol_set():
 def apply_universe_filter(daily_df: pd.DataFrame) -> pd.DataFrame:
     """
     Filter daily OHLC DataFrame to configured universe.
-    Called once per MarketContext build — all scanners inherit the result.
-
-    Steps (applied in order regardless of mode):
-      1. Remove ETFs, index funds, bonds, SGBs, REITs, junk symbols
-      2. Remove stocks priced below MIN_PRICE (default ₹20)
-      3. FNO_ONLY mode: further restrict to F&O stocks only
+    Called once per MarketContext build — all scanners see the filtered universe.
+    Steps: non-equity removal → price < MIN_PRICE → FNO_ONLY (if set)
     """
     if daily_df is None or daily_df.empty:
         return daily_df
 
     original = len(daily_df)
 
-    # ── Step 1: Remove non-tradeable instruments ──
-    non_eq_mask  = daily_df['symbol'].apply(_is_non_equity)
-    daily_df     = daily_df[~non_eq_mask].reset_index(drop=True)
-    after_etf    = len(daily_df)
-    removed_etf  = original - after_etf
+    # Step 1 — remove non-equity instruments
+    daily_df = daily_df[~daily_df['symbol'].apply(_is_non_equity)].reset_index(drop=True)
+    after_ne = len(daily_df)
 
-    # ── Step 2: Remove stocks priced below MIN_PRICE ──
-    if 'close' in daily_df.columns:
-        price_mask    = pd.to_numeric(daily_df['close'], errors='coerce') >= MIN_PRICE
-        daily_df      = daily_df[price_mask].reset_index(drop=True)
-        after_price   = len(daily_df)
-        removed_price = after_etf - after_price
-    else:
-        after_price   = after_etf
-        removed_price = 0
+    # Step 2 — remove penny stocks below MIN_PRICE
+    daily_df = daily_df[daily_df['close'] >= MIN_PRICE].reset_index(drop=True)
+    after_price = len(daily_df)
 
-    # ── Step 3: Universe mode ──
+    # Step 3 — FNO_ONLY filter (optional)
     if UNIVERSE_MODE == 'FNO_ONLY':
         fo_syms = get_fo_symbol_set()
         if fo_syms:
             daily_df = daily_df[daily_df['symbol'].isin(fo_syms)].reset_index(drop=True)
-            print(f"[Universe] FNO_ONLY: {original} raw "
-                  f"→ {after_etf} (−{removed_etf} non-equity) "
-                  f"→ {after_price} (−{removed_price} <₹{MIN_PRICE:.0f}) "
-                  f"→ {len(daily_df)} F&O stocks")
         else:
-            print(f"[Universe] FNO_ONLY: F&O list unavailable — "
-                  f"using {after_price} stocks after ETF+price filter")
+            print("[Universe] FNO_ONLY: could not load F&O list, using filtered universe")
 
-    elif UNIVERSE_MODE == 'CASH_AND_FNO':
-        print(f"[Universe] CASH_AND_FNO: {original} raw "
-              f"→ {after_etf} (−{removed_etf} non-equity) "
-              f"→ {after_price} (−{removed_price} <₹{MIN_PRICE:.0f}) stocks")
-
-    else:
-        print(f"[Universe] Unknown mode '{UNIVERSE_MODE}' — "
-              f"{after_price} stocks after ETF+price filter")
-
+    print(
+        f"[Universe] {UNIVERSE_MODE}: {original} raw → "
+        f"{after_ne} (−{original - after_ne} non-equity) → "
+        f"{after_price} (−{after_ne - after_price} <₹{MIN_PRICE:.0f}) → "
+        f"{len(daily_df)} stocks"
+    )
     return daily_df
 
 

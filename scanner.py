@@ -84,15 +84,11 @@ def run_scan(exchange='ALL'):
             if narrow_cpr_w or narrow_cpr_m:
                 setup_parts.append('🔥 Narrow CPR')
 
-            # Direction: price above weekly pivot = Long bias, below = Short bias
-            w_pivot   = float(w_row['P'])
-            direction = '🟢 Long' if price >= w_pivot else '🔴 Short'
-
             results.append({
                 'Symbol':         sym,
                 'Exchange':       exch,
-                'Direction':      direction,
                 'Price':          round(price, 2),
+                'Direction':      '🟢 Long' if price >= w_row['P'] else '🔴 Short',
                 'Setup':          ' | '.join(setup_parts),
                 'Weekly Hit':     ', '.join(w_hits),
                 'Monthly Hit':    ', '.join(m_hits),

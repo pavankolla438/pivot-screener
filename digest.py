@@ -12,9 +12,8 @@ DIGEST_TO      = os.environ.get('DIGEST_TO',      '')
 
 MAX_CONFLUENCE_BONUS = 4
 
-# Volume multiplier cap — vol_ratio of ~10x gives vm=3.30, 20x gives 3.99.
-# Stocks with extreme vol spikes (halt, news, operator) shouldn't dominate ranking.
-# Cap at 2.5 ≈ vol_ratio of 7.4x — meaningful but not runaway.
+# Volume multiplier cap — vol_ratio ~7x gives vm=2.5. Beyond this,
+# extreme spikes (halt, news, operator) shouldn't dominate ranking.
 VM_CAP = 2.5
 
 # ─────────────────────────────────────────
@@ -162,43 +161,38 @@ TRIGGER_SCANNERS    = {'Inside Bar'}
 MOMENTUM_SCANNERS   = {'Momentum'}
 
 TIER1_PAIRS = [
-    {'Inside Bar', 'Momentum'},       # compression then momentum fire
-    {'Accumulation', 'Inside Bar'},   # vol buildup + coiling
-    {'Trendline', 'Inside Bar'},      # support + coiling
-    {'Darvas', 'Inside Bar'},         # box + coiling
-    {'Pivot', 'Inside Bar'},          # CPR + coiling
+    {'Inside Bar', 'Momentum'},
+    {'Accumulation', 'Inside Bar'},
+    {'Trendline', 'Inside Bar'},
+    {'Darvas', 'Inside Bar'},
+    {'Pivot', 'Inside Bar'},
 ]
 
-# Tier 2 (+2): Structure + Momentum OR two strong structures
 TIER2_PAIRS = [
     {'Trendline', 'Momentum'},
     {'Pivot', 'Momentum'},
     {'Accumulation', 'Momentum'},
     {'Darvas', 'Momentum'},
-    {'Darvas', 'Accumulation'},       # two structure signals agree
+    {'Darvas', 'Accumulation'},
     {'Pivot', 'Accumulation'},
     {'Trendline', 'Accumulation'},
     {'Pivot', 'Darvas'},
 ]
 
-# Tier 3 (+1): weaker combos
 TIER3_PAIRS = [
     {'Trendline', 'Pivot'},
 ]
 
 SETUP_LABELS = [
-    # Trigger combos
     ({'Inside Bar', 'Momentum'},      'Compression Expansion'),
     ({'Accumulation', 'Inside Bar'},  'Accumulation + Compression'),
     ({'Trendline', 'Inside Bar'},     'Support + Compression'),
     ({'Darvas', 'Inside Bar'},        'Box Compression Breakout'),
     ({'Pivot', 'Inside Bar'},         'Pivot + Compression'),
-    # Momentum combos
     ({'Trendline', 'Momentum'},       'Trend Continuation'),
     ({'Accumulation', 'Momentum'},    'Accumulation + Momentum'),
     ({'Pivot', 'Momentum'},           'Pivot + Momentum'),
     ({'Darvas', 'Momentum'},          'Box + Momentum'),
-    # Structure-only combos
     ({'Darvas', 'Accumulation'},      'Darvas + Accumulation'),
     ({'Pivot', 'Accumulation'},       'Pivot + Accumulation'),
     ({'Trendline', 'Accumulation'},   'Support + Accumulation'),
@@ -304,31 +298,27 @@ def pick_top_setups(cache_ref, top_n=10):
         rep        = max(best_per_scanner.values(), key=lambda r: r['_raw'])
         total_base = sum(r['_base'] for r in best_per_scanner.values())
 
-        # Volume multiplier: base-weighted average across all scanners.
-        # Prevents one high-vol scanner row from inflating the entire symbol score.
-        # Falls back to rep vm if all bases are zero (edge case).
+        # Base-weighted average vm — prevents one high-vol scanner inflating whole score
         if total_base > 0:
             vm = sum(r['_base'] * r['_vm'] for r in best_per_scanner.values()) / total_base
         else:
             vm = rep['_vm']
-        vm = min(VM_CAP, vm)   # safety cap (each _vm is already capped, but belt+braces)
+        vm = min(VM_CAP, vm)
 
         raw_score   = total_base * vm
+        conf_bonus  = get_confluence_bonus(scanners_set)
+        final_score = raw_score + conf_bonus
 
-        # Direction: use rep's if present, else borrow from the most actionable scanner
+        # Direction: use rep's if present, else borrow from most actionable scanner
         rep_direction = rep.get('Direction', '')
         if not rep_direction or str(rep_direction) in ('', 'nan'):
-            dir_priority = ['Darvas', 'Inside Bar', 'Momentum',
-                            'Trendline', 'Accumulation', 'Pivot']
-            for sc_name in dir_priority:
+            for sc_name in ['Darvas', 'Inside Bar', 'Momentum', 'Trendline', 'Accumulation', 'Pivot']:
                 candidate = best_per_scanner.get(sc_name)
                 if candidate:
                     d = candidate.get('Direction', '')
                     if d and str(d) not in ('', 'nan'):
                         rep_direction = d
                         break
-        conf_bonus  = get_confluence_bonus(scanners_set)
-        final_score = raw_score + conf_bonus
 
         merged.append({
             'Symbol':           sym,

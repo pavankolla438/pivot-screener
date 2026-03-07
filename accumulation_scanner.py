@@ -182,8 +182,8 @@ def run_accumulation_scan(exchange='ALL', min_score=1, min_vol_ratio=0.0):
             results.append({
                 'Symbol':      sym,
                 'Exchange':    exch,
-                'Direction':   '🟢 Long',   # accumulation is always a bullish setup
                 'Price':       round(float(today['close']), 2),
+                'Direction':   '🟢 Long',
                 'Score':       scored['score'],
                 'Signals':     scored['signals'],
                 'Tight+Vol↑':  '✅' if scored['tight_vol_rising'] else '',
