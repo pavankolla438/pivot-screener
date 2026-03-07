@@ -27,7 +27,11 @@ def get_prev_close(symbol, exchange):
     df = get_history(symbol, exchange, interval='1d')
     if df is None or df.empty or len(df) < 2:
         return None
-    return float(df.iloc[-2]['close'])
+    val = df.iloc[-2]['close']
+    # Guard against duplicate index producing a Series instead of scalar
+    if hasattr(val, '__len__'):
+        val = val.iloc[-1]
+    return float(val)
 
 # ─────────────────────────────────────────
 # ACCUMULATION BOX DETECTION
