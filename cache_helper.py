@@ -3,12 +3,23 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 
-CACHE_DIR = r"C:\pivot_screener\data\yf_cache"
-os.makedirs(CACHE_DIR, exist_ok=True)
+# ─────────────────────────────────────────
+# PATHS — use DATA_ROOT env var so same code
+# works on Windows dev and Railway (Linux).
+# ─────────────────────────────────────────
+
+_DEFAULT_ROOT  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+DATA_ROOT      = os.environ.get('DATA_ROOT', _DEFAULT_ROOT)
+CACHE_DIR      = os.path.join(DATA_ROOT, 'yf_cache')
+BULK_CACHE_DIR = os.path.join(DATA_ROOT, 'bulk_cache')
+
+os.makedirs(CACHE_DIR,      exist_ok=True)
+os.makedirs(BULK_CACHE_DIR, exist_ok=True)
 
 def _cache_path(symbol, exchange, interval):
-    today = datetime.today().strftime("%Y%m%d")
-    return os.path.join(CACHE_DIR, f"{symbol}_{exchange}_{interval}_{today}.csv")
+    from data_fetcher import get_last_trading_day
+    day = get_last_trading_day().strftime("%Y%m%d")
+    return os.path.join(CACHE_DIR, f"{symbol}_{exchange}_{interval}_{day}.csv")
 
 def fetch_history_cached(symbol, exchange, interval='1d', lookback_bars=60):
     cache_file = _cache_path(symbol, exchange, interval)
@@ -167,14 +178,10 @@ def clear_old_cache(days_to_keep=2):
 # BULK CACHE — single file per interval
 # ─────────────────────────────────────────
 
-BULK_CACHE_DIR = r"C:\pivot_screener\data\bulk_cache"
-os.makedirs(BULK_CACHE_DIR, exist_ok=True)
-
 def _bulk_cache_path(exchange, interval):
     # Normalize exchange — 'ALL'/'BOTH' are logical groupings but data is always NSE.
-    # Fixed key prevents cache misses when exchange label changes between runs.
     exch = 'NSE' if exchange in ('ALL', 'BOTH') else exchange
-    # Use last trading day (not today) so cache stays valid over weekends/holidays.
+    # Use last trading day so cache stays valid over weekends/holidays.
     from data_fetcher import get_last_trading_day
     day = get_last_trading_day().strftime("%Y%m%d")
     return os.path.join(BULK_CACHE_DIR, f"{exch}_{interval}_{day}.parquet")

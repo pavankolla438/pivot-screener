@@ -1,4 +1,5 @@
 import os
+import pickle
 import pandas as pd
 from cache_helper import fetch_histories_batch, load_bulk_cache
 
@@ -102,6 +103,47 @@ def _build_swing_cache(exchange, interval, window=5, min_prominence_pct=0.5):
 
     _swing_cache[key] = cache
     print(f"[SwingCache] {exchange} {interval}: {len(cache)} symbols cached")
+    _save_swing_cache(exchange, interval)
+
+
+# ─────────────────────────────────────────
+# SWING CACHE DISK PERSISTENCE
+# Saved alongside the bulk parquet, keyed by last trading day.
+# Avoids recomputing ~8s prominence filter on every process start.
+# ─────────────────────────────────────────
+
+def _swing_cache_path(exchange, interval):
+    from cache_helper import BULK_CACHE_DIR
+    from data_fetcher import get_last_trading_day
+    exch = 'NSE' if exchange in ('ALL', 'BOTH') else exchange
+    day  = get_last_trading_day().strftime("%Y%m%d")
+    return os.path.join(BULK_CACHE_DIR, f"{exch}_{interval}_{day}_swings.pkl")
+
+def _save_swing_cache(exchange, interval):
+    key  = f"{exchange}_{interval}"
+    data = _swing_cache.get(key)
+    if not data:
+        return
+    path = _swing_cache_path(exchange, interval)
+    try:
+        with open(path, 'wb') as f:
+            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"[SwingCache] Saved {len(data)} symbols → {os.path.basename(path)}")
+    except Exception as e:
+        print(f"[SwingCache] Save failed: {e}")
+
+def _load_swing_cache(exchange, interval):
+    path = _swing_cache_path(exchange, interval)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'rb') as f:
+            data = pickle.load(f)
+        print(f"[SwingCache] Loaded {len(data)} symbols from {os.path.basename(path)}")
+        return data
+    except Exception as e:
+        print(f"[SwingCache] Load failed ({e}), will recompute")
+        return None
 
 # ─────────────────────────────────────────
 # PRELOAD
@@ -125,7 +167,10 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                     _build_index(exch, interval)
                 key = f"{exch}_{interval}"
                 if key not in _swing_cache:
-                    if interval == '1wk':
+                    cached = _load_swing_cache(exch, interval)
+                    if cached is not None:
+                        _swing_cache[key] = cached
+                    elif interval == '1wk':
                         _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
                     else:
                         _build_swing_cache(exch, interval, window=5, min_prominence_pct=0.5)
@@ -177,7 +222,10 @@ def preload_histories(symbols, exchange, intervals=('1d', '1wk'), lookback_bars=
                 _store[exch][interval] = None
 
         _build_index(exch, interval)
-        if interval == '1wk':
+        cached = _load_swing_cache(exch, interval)
+        if cached is not None:
+            _swing_cache[f"{exch}_{interval}"] = cached
+        elif interval == '1wk':
             _build_swing_cache(exch, interval, window=7, min_prominence_pct=2.0)
         else:
             _build_swing_cache(exch, interval, window=5, min_prominence_pct=0.5)
@@ -249,6 +297,15 @@ def clear_store(exchange=None):
         _store       = {}
         _index       = {}
         _swing_cache = {}
+    # Also delete swing pkl files so they're rebuilt fresh on next preload
+    try:
+        from cache_helper import BULK_CACHE_DIR
+        for fname in os.listdir(BULK_CACHE_DIR):
+            if fname.endswith('_swings.pkl'):
+                if exchange is None or fname.startswith(exchange):
+                    os.remove(os.path.join(BULK_CACHE_DIR, fname))
+    except Exception:
+        pass
     print(f"[Store] Cleared {'all' if not exchange else exchange}")
 
 def store_stats():
