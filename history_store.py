@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from cache_helper import fetch_histories_batch, load_bulk_cache
 
@@ -32,8 +33,6 @@ def _build_index(exchange, interval):
         df = grp.drop(columns=['_sym'])
         df.index = pd.to_datetime(df.index)
         df = df.sort_index()
-        # Drop duplicate dates — yfinance occasionally produces them for
-        # splits/adjustments. Keep last occurrence (most recent adjustment).
         df = df[~df.index.duplicated(keep='last')]
         idx[sym] = df
     _index[exchange][interval] = idx
