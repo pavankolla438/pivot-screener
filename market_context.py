@@ -43,8 +43,8 @@ _SGB = re.compile(r'^SGB', re.IGNORECASE)
 # 5. G-Secs / T-bills
 _GSEC = re.compile(r'(\d+\.\d+GS\d{4}|GS\d{4})', re.IGNORECASE)
 
-# 6. Bharat Bond / year-coded instruments ending in 4 digits (e.g. 0433, 0432)
-_BOND_YEAR = re.compile(r'\d{4}$')
+# 6. Instruments ending in 3+ digits: year-coded bonds (0433), 360-series ETFs (GOLD360, SILVER360)
+_BOND_YEAR = re.compile(r'\d{3,}$')
 
 # 7. Bharat Bond ETF series ending in B+2digits (ICICIB22, ICICIB30 etc.)
 _BHARAT_BOND = re.compile(r'B\d{2}$', re.IGNORECASE)
