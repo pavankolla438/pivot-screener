@@ -280,16 +280,20 @@ class MarketRegime:
         """
         Returns multipliers (0.5 – 1.5) per scanner/trigger type.
         Applied as a multiplicative bonus in pick_top_setups.
+
+        If volatile_overlay is True (strong trend + elevated vol), long setups
+        are dampened in a downtrend and short setups dampened in an uptrend.
         """
-        label = self.label
+        label   = self.label
+        volatile = getattr(self, 'volatile_overlay', False)
 
         if label == 'TRENDING_UP':
-            return {
-                'Breakout':     1.4,   # breakouts lead in uptrends
-                'Breakdown':    0.6,   # counter-trend — reduce weight
+            bias = {
+                'Breakout':     1.4,
+                'Breakdown':    0.6,
                 'Attempt':      1.2,
                 'Baby':         1.0,
-                'Pivot':        0.8,   # pivot reversals less reliable in trends
+                'Pivot':        0.8,
                 'Darvas':       1.3,
                 'Accumulation': 1.2,
                 'Momentum':     1.3,
@@ -297,12 +301,12 @@ class MarketRegime:
                 'Inside Bar':   1.1,
             }
         elif label == 'TRENDING_DOWN':
-            return {
+            bias = {
                 'Breakout':     0.6,
                 'Breakdown':    1.4,
                 'Attempt':      1.2,
                 'Baby':         1.0,
-                'Pivot':        1.1,   # pivot support tests more common
+                'Pivot':        1.1,
                 'Darvas':       1.2,
                 'Accumulation': 0.9,
                 'Momentum':     1.2,
@@ -310,24 +314,24 @@ class MarketRegime:
                 'Inside Bar':   1.1,
             }
         elif label == 'RANGING':
-            return {
-                'Breakout':     0.8,   # false breakouts common in range
+            bias = {
+                'Breakout':     0.8,
                 'Breakdown':    0.8,
-                'Attempt':      1.3,   # fades near range extremes
-                'Baby':         1.4,   # compression setups — primed for move
-                'Pivot':        1.5,   # pivot reversals are the range playbook
+                'Attempt':      1.3,
+                'Baby':         1.4,
+                'Pivot':        1.5,
                 'Darvas':       0.9,
                 'Accumulation': 1.3,
                 'Momentum':     0.8,
                 'Trendline':    1.2,
                 'Inside Bar':   1.4,
             }
-        else:  # VOLATILE
-            return {
-                'Breakout':     0.7,   # chop — reduce conviction on all
+        else:  # VOLATILE — no strong trend, direction unclear
+            bias = {
+                'Breakout':     0.7,
                 'Breakdown':    0.7,
                 'Attempt':      0.8,
-                'Baby':         1.2,   # wait-and-see positions preferred
+                'Baby':         1.2,
                 'Pivot':        1.0,
                 'Darvas':       0.8,
                 'Accumulation': 1.1,
@@ -335,6 +339,21 @@ class MarketRegime:
                 'Trendline':    0.9,
                 'Inside Bar':   1.2,
             }
+
+        # Volatile overlay: strong trend with elevated vol.
+        # Dampen counter-trend setups so the engine doesn't fight the trend.
+        if volatile and label != 'VOLATILE':
+            if self.direction == 'DOWN':
+                # Volatile downtrend — dampen long-biased scanners
+                for k in ('Breakout', 'Accumulation', 'Momentum', 'Darvas'):
+                    bias[k] = round(bias[k] * 0.85, 3)
+            elif self.direction == 'UP':
+                # Volatile uptrend — dampen short-biased setups
+                for k in ('Breakdown',):
+                    bias[k] = round(bias[k] * 0.85, 3)
+
+        return bias
+
 
     # ── Convenience properties ────────────────────────────────────────────────
 
@@ -372,6 +391,7 @@ class MarketRegime:
     def to_dict(self) -> dict:
         return {
             'label':             self.label,
+            'volatile_overlay':  getattr(self, 'volatile_overlay', False),
             'direction':         self.direction,
             'trend_score':       self.trend_score,
             'range_score':       self.range_score,

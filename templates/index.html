@@ -1329,8 +1329,9 @@
       const d   = await res.json();
       if (d.error) { document.getElementById('regime-label').textContent = '⚠️ ' + d.error; return; }
       const color = REGIME_COLORS[d.label] || '#aaa';
+      const volTag = (d.volatile_overlay && d.label !== 'VOLATILE') ? ' ⚡' : '';
       document.getElementById('regime-label').innerHTML =
-        `<span style="color:${color}">${REGIME_EMOJI[d.label]||'❓'} ${d.label.replace(/_/g,' ')}</span>`;
+        `<span style="color:${color}">${REGIME_EMOJI[d.label]||'❓'} ${d.label.replace(/_/g,' ')}${volTag}</span>`;
       document.getElementById('regime-scores').textContent =
         `trend ${d.trend_score>=0?'+':''}${d.trend_score}  ·  range ${d.range_score}  ·  vol ${d.vol_score}`;
       document.getElementById('regime-divergence').textContent = d.sector_divergence ? '⚠️ Sector Divergence' : '';
