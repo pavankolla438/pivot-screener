@@ -549,9 +549,7 @@
         <option value="Daily + Weekly">Both TF ⭐</option>
       </select>
     </div>
-    <div><label>Min Inside Bars</label>
-      <input type="text" id="insidebar-minbars" placeholder="e.g. 2" style="width:70px">
-    </div>
+
     <div><label>Confluence</label>
       <select id="insidebar-confluence" class="fo-toggle">
         <option value="false">All</option>
@@ -924,13 +922,11 @@
     if (scan === 'insidebar') {
       const trigger = document.getElementById('insidebar-trigger').value;
       const tf      = document.getElementById('insidebar-tf').value;
-      const minBars = parseInt(document.getElementById('insidebar-minbars').value) || 0;
       const cfOnly  = document.getElementById('insidebar-confluence').value === 'true';
       const search  = document.getElementById('insidebar-search').value.trim().toUpperCase();
       data = data.filter(r => {
         if (trigger && r.Trigger !== trigger)                         return false;
         if (tf      && !r.Timeframe.includes(tf))                    return false;
-        if ((r['Inside Bars'] || 0) < minBars)                       return false;
         if (cfOnly  && (!r.Confluence || r.Confluence.length === 0)) return false;
         if (search  && !r.Symbol.includes(search))                   return false;
         return true;
@@ -1219,10 +1215,13 @@
   ['trendline-search','trendline-volratio'].forEach(id =>
     document.getElementById(id).addEventListener('input', () => applyFilters('trendline')));
 
-  document.getElementById('insidebar-n').addEventListener('change', () => loadScan('insidebar'));
+  document.getElementById('insidebar-n').addEventListener('change', () => {
+    document.getElementById('insidebar-trigger').value = '';  // reset trigger to All on N change
+    loadScan('insidebar');
+  });
   ['insidebar-trigger','insidebar-tf','insidebar-confluence','insidebar-volrising'].forEach(id =>
     document.getElementById(id).addEventListener('change', () => applyFilters('insidebar')));
-  ['insidebar-minbars','insidebar-search','insidebar-volratio'].forEach(id =>
+  ['insidebar-search','insidebar-volratio'].forEach(id =>
     document.getElementById(id).addEventListener('input', () => applyFilters('insidebar')));
 
   document.getElementById('accumulation-score').addEventListener('change',
