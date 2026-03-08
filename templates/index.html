@@ -284,6 +284,15 @@
   <div class="tab"        onclick="switchTab('momentum')">⚡ Momentum</div>
 </div>
 
+<!-- ════════════════ REGIME BAR ════════════════ -->
+<div id="regime-bar" style="background:#1a1a2e;border-bottom:1px solid #2d2d4e;padding:8px 18px;font-size:13px;color:#aaa;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+  <span style="color:#666;">Market Regime:</span>
+  <span id="regime-label" style="font-weight:600;color:#e0e0e0;">—</span>
+  <span id="regime-scores" style="color:#888;font-size:12px;"></span>
+  <span id="regime-divergence" style="color:#f0a500;font-size:12px;"></span>
+  <span id="regime-bias-summary" style="color:#666;font-size:11px;margin-left:auto;"></span>
+  <button onclick="loadRegime(true)" style="background:none;border:1px solid #444;color:#888;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;">⟳ refresh</button>
+</div>
 <!-- ════════════════ TOP 10 ════════════════ -->
 <div id="section-top10" class="section">
   <div class="top10-controls">
@@ -1309,6 +1318,29 @@
 
   checkMarketStatus();
   setInterval(checkMarketStatus, 60000);
+
+  // ── Regime ─────────────────────────────────────────────────────
+  const REGIME_COLORS = { TRENDING_UP:'#26a69a', TRENDING_DOWN:'#ef5350', RANGING:'#f0a500', VOLATILE:'#ab47bc' };
+  const REGIME_EMOJI  = { TRENDING_UP:'📈', TRENDING_DOWN:'📉', RANGING:'↔️', VOLATILE:'⚡' };
+
+  async function loadRegime(refresh = false) {
+    try {
+      const res = await fetch('/api/regime' + (refresh ? '?refresh=true' : ''));
+      const d   = await res.json();
+      if (d.error) { document.getElementById('regime-label').textContent = '⚠️ ' + d.error; return; }
+      const color = REGIME_COLORS[d.label] || '#aaa';
+      document.getElementById('regime-label').innerHTML =
+        `<span style="color:${color}">${REGIME_EMOJI[d.label]||'❓'} ${d.label.replace(/_/g,' ')}</span>`;
+      document.getElementById('regime-scores').textContent =
+        `trend ${d.trend_score>=0?'+':''}${d.trend_score}  ·  range ${d.range_score}  ·  vol ${d.vol_score}`;
+      document.getElementById('regime-divergence').textContent = d.sector_divergence ? '⚠️ Sector Divergence' : '';
+      const bias = d.scanner_bias || {};
+      const top  = Object.entries(bias).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>`${k} ×${v.toFixed(1)}`).join('  ');
+      document.getElementById('regime-bias-summary').textContent = top ? `Bias → ${top}` : '';
+    } catch(e) { document.getElementById('regime-label').textContent = '—'; }
+  }
+
+  loadRegime();
 </script>
 </body>
 </html>

@@ -5,16 +5,13 @@ import pandas as pd
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from data_fetcher import get_last_trading_day
+from regime import get_regime, apply_regime_bias
 
 GMAIL_USER     = os.environ.get('GMAIL_USER',     '')
 GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD', '')
 DIGEST_TO      = os.environ.get('DIGEST_TO',      '')
 
 MAX_CONFLUENCE_BONUS = 4
-
-# Volume multiplier cap — vol_ratio ~7x gives vm=2.5. Beyond this,
-# extreme spikes (halt, news, operator) shouldn't dominate ranking.
-VM_CAP = 2.5
 
 # ─────────────────────────────────────────
 # PRELOAD ALL DATA
@@ -149,7 +146,7 @@ def vol_multiplier(r):
         vr = max(float(r.get('Vol Ratio', 1) or 1), 1.0)
     except:
         vr = 1.0
-    return min(VM_CAP, 1 + math.log(vr))
+    return 1 + math.log(vr)
 
 
 # ─────────────────────────────────────────
@@ -173,14 +170,16 @@ TIER2_PAIRS = [
     {'Pivot', 'Momentum'},
     {'Accumulation', 'Momentum'},
     {'Darvas', 'Momentum'},
-    {'Darvas', 'Accumulation'},
-    {'Pivot', 'Accumulation'},
-    {'Trendline', 'Accumulation'},
-    {'Pivot', 'Darvas'},
+    {'Inside Bar', 'Accumulation'},
 ]
 
 TIER3_PAIRS = [
-    {'Trendline', 'Pivot'},
+    {'Trendline', 'Inside Bar'},
+    {'Pivot', 'Inside Bar'},
+    {'Pivot', 'Accumulation'},
+    {'Trendline', 'Accumulation'},
+    {'Darvas', 'Accumulation'},
+    {'Pivot', 'Darvas'},
 ]
 
 SETUP_LABELS = [
@@ -192,13 +191,8 @@ SETUP_LABELS = [
     ({'Trendline', 'Momentum'},       'Trend Continuation'),
     ({'Accumulation', 'Momentum'},    'Accumulation + Momentum'),
     ({'Pivot', 'Momentum'},           'Pivot + Momentum'),
+    ({'Inside Bar', 'Accumulation'},  'Compression + Accumulation'),
     ({'Darvas', 'Momentum'},          'Box + Momentum'),
-    ({'Darvas', 'Accumulation'},      'Darvas + Accumulation'),
-    ({'Pivot', 'Accumulation'},       'Pivot + Accumulation'),
-    ({'Trendline', 'Accumulation'},   'Support + Accumulation'),
-    ({'Pivot', 'Darvas'},             'Pivot + Darvas Box'),
-    ({'Pivot', 'Trendline'},          'Pivot + Trendline'),
-    ({'Trendline', 'Darvas'},         'Trendline + Darvas'),
 ]
 
 FULL_STACK_LABEL = 'Full Stack Setup 🔥'
@@ -236,7 +230,7 @@ def get_setup_label(scanners_set):
     for pair, label in SETUP_LABELS:
         if pair.issubset(scanners_set):
             return label
-    return get_scanner_display(scanners_set) if scanners_set else ''
+    return list(scanners_set)[0] if scanners_set else ''
 
 
 def get_scanner_display(scanners_set):
@@ -250,6 +244,14 @@ def get_scanner_display(scanners_set):
 # ─────────────────────────────────────────
 
 def pick_top_setups(cache_ref, top_n=10):
+
+    # ── Regime context — fetched once, applied per row ──────────────────
+    try:
+        regime = get_regime()
+        print(f"[Digest] Regime: {regime.summary}")
+    except Exception as _re:
+        regime = None
+        print(f"[Digest] Regime unavailable: {_re}")
 
     scanner_map = {
         'Pivot':        cache_ref.get('pivot_BOTH'),
@@ -274,6 +276,9 @@ def pick_top_setups(cache_ref, top_n=10):
             row['_base']    = base
             row['_vm']      = vol_multiplier(r)
             row['_raw']     = base * row['_vm']
+            # Apply regime bias — scales raw score up/down by scanner+trigger type
+            trigger = str(r.get('Trigger', r.get('Direction', '')))
+            row['_raw'] = apply_regime_bias(row['_raw'], scanner_name, trigger, regime)
             all_rows.append(row)
 
     if not all_rows:
@@ -297,34 +302,16 @@ def pick_top_setups(cache_ref, top_n=10):
 
         rep        = max(best_per_scanner.values(), key=lambda r: r['_raw'])
         total_base = sum(r['_base'] for r in best_per_scanner.values())
-
-        # Base-weighted average vm — prevents one high-vol scanner inflating whole score
-        if total_base > 0:
-            vm = sum(r['_base'] * r['_vm'] for r in best_per_scanner.values()) / total_base
-        else:
-            vm = rep['_vm']
-        vm = min(VM_CAP, vm)
-
-        raw_score   = total_base * vm
+        vm         = rep['_vm']
+        raw_score  = total_base * vm
         conf_bonus  = get_confluence_bonus(scanners_set)
         final_score = raw_score + conf_bonus
-
-        # Direction: use rep's if present, else borrow from most actionable scanner
-        rep_direction = rep.get('Direction', '')
-        if not rep_direction or str(rep_direction) in ('', 'nan'):
-            for sc_name in ['Darvas', 'Inside Bar', 'Momentum', 'Trendline', 'Accumulation', 'Pivot']:
-                candidate = best_per_scanner.get(sc_name)
-                if candidate:
-                    d = candidate.get('Direction', '')
-                    if d and str(d) not in ('', 'nan'):
-                        rep_direction = d
-                        break
 
         merged.append({
             'Symbol':           sym,
             'Exchange':         exch,
             'Price':            rep.get('Price', ''),
-            'Direction':        rep_direction,
+            'Direction':        rep.get('Direction', ''),
             'Score':            round(final_score, 1),
             'Vol Ratio':        rep.get('Vol Ratio', ''),
             'Signals':          rep.get('Signals', rep.get('Trigger', rep.get('Setup', ''))),

@@ -122,13 +122,14 @@ def to_json(df):
 
 def ensure_preloaded():
     from market_context import UNIVERSE_MODE
-    key = f"NSE_{get_last_trading_day()}_{UNIVERSE_MODE}"
+    key = f"ALL_{get_last_trading_day()}_{UNIVERSE_MODE}"
     if key in _preloaded:
         return
     print(f"\n[Preload] Starting preload (mode: {UNIVERSE_MODE})...")
     contexts = get_context('ALL')
-    ctx = contexts.get('NSE')          # get_context() always returns {'NSE': ...}
+    ctx = contexts.get('ALL')
     if ctx and ctx.daily is not None:
+        # ctx.daily is already universe-filtered — preload only what scanners will use
         symbols = ctx.daily['symbol'].tolist()
         preload_histories(symbols, 'NSE', intervals=('1d','1wk'), lookback_bars=252)
         store_stats()
@@ -253,6 +254,18 @@ def api_insidebar_refresh():
     _cache.pop(cache_key, None)
     _cache[cache_key] = run_and_enrich(run_inside_bar_scan, direction='BOTH', n=n)
     return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
+
+# -- REGIME --
+
+@app.route('/api/regime')
+def api_regime():
+    from regime import get_regime
+    force = request.args.get('refresh', 'false').lower() == 'true'
+    try:
+        r = get_regime(force_refresh=force)
+        return jsonify(r.to_dict())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # -- ACCUMULATION --
 
