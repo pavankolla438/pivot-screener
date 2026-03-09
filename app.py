@@ -255,18 +255,6 @@ def api_insidebar_refresh():
     _cache[cache_key] = run_and_enrich(run_inside_bar_scan, direction='BOTH', n=n)
     return to_json(filter_fo(dir_filter(_cache[cache_key], direction), fo_only))
 
-# -- REGIME --
-
-@app.route('/api/regime')
-def api_regime():
-    from regime import get_regime
-    force = request.args.get('refresh', 'false').lower() == 'true'
-    try:
-        r = get_regime(force_refresh=force)
-        return jsonify(r.to_dict())
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 # -- ACCUMULATION --
 
 @app.route('/api/accumulation')
@@ -397,9 +385,27 @@ def api_fo_count():
 
 # -- SCHEDULER --
 
+def _evening_refresh():
+    """
+    Runs at 6:30 PM IST Mon-Fri, after NSE publishes today's bhavcopy (~6-7pm).
+    Clears all in-memory caches so the next API call triggers a fresh preload
+    with today's data — without requiring a Railway restart.
+    """
+    from data_fetcher import _last_trading_day_cache
+    from market_context import clear_context
+    _last_trading_day_cache.clear()   # force re-detect today's trading day
+    _cache.clear()                    # clear scanner result cache
+    clear_store()                     # clear yfinance history store
+    clear_context()                   # clear bhavcopy context cache
+    _preloaded.clear()                # force re-preload on next request
+    print("[Scheduler] Evening refresh complete — caches cleared, today's data will load on next request.")
+
+
 def start_scheduler():
     IST = pytz.timezone('Asia/Kolkata')
     scheduler = BackgroundScheduler(timezone=IST)
+
+    # 8:30 AM — morning digest (uses previous day's confirmed data)
     scheduler.add_job(
         func=lambda: run_daily_digest(_cache),
         trigger=CronTrigger(hour=8, minute=30,
@@ -409,8 +415,22 @@ def start_scheduler():
         name='Daily Digest + Preload',
         replace_existing=True,
     )
+
+    # 6:30 PM — evening refresh (picks up today's bhavcopy after NSE publishes it)
+    scheduler.add_job(
+        func=_evening_refresh,
+        trigger=CronTrigger(hour=18, minute=30,
+                            day_of_week='mon-fri',
+                            timezone=IST),
+        id='evening_refresh',
+        name='Evening Data Refresh',
+        replace_existing=True,
+    )
+
     scheduler.start()
-    print("[Scheduler] Daily digest scheduled at 8:30 AM IST (Mon-Fri)")
+    print("[Scheduler] Jobs scheduled:")
+    print("            8:30 AM IST Mon-Fri — morning digest")
+    print("            6:30 PM IST Mon-Fri — evening data refresh")
     return scheduler
 
 _scheduler = start_scheduler()
