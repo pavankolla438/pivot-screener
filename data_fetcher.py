@@ -106,15 +106,19 @@ def get_last_trading_day():
 
         cache_path = os.path.join(DATA_DIR, f"nse_bhav_{candidate.strftime('%Y%m%d')}.csv")
 
-        if os.path.exists(cache_path):
-            # File exists — safe to cache and return
-            if candidate < today:
-                _last_trading_day_cache[today_str] = candidate
-            return candidate
+        if candidate == today:
+            # Today: only return if bhavcopy file actually exists on disk.
+            # Never cache — re-check every call until the file appears.
+            if os.path.exists(cache_path):
+                return today
+            # Not published yet — step back to yesterday, keep going
+            candidate -= timedelta(days=1)
+            continue
 
-        # File doesn't exist — never cache, always step back and keep trying
-        # This ensures once today's bhavcopy appears, the next call picks it up
-        candidate -= timedelta(days=1)
+        # Past day: it's a confirmed trading day — return and cache it.
+        # No file-existence check needed for past days.
+        _last_trading_day_cache[today_str] = candidate
+        return candidate
 
     raise RuntimeError("Could not determine last trading day in the past 14 days.")
 
