@@ -89,7 +89,7 @@ def find_rising_trendlines(df, sym, exchange, interval):
     trendlines.sort(key=lambda x: -x['strength'])
     return trendlines[:3]
 
-def run_trendline_scan(exchange='BOTH'):
+def run_trendline_scan(exchange='ALL'):
     day = get_last_trading_day()
     print(f"\n=== Trendline / Support Scan | {day} | Exchange: {exchange} ===\n")
 
@@ -152,7 +152,6 @@ def run_trendline_scan(exchange='BOTH'):
                 'Symbol':     sym,
                 'Exchange':   exch,
                 'Price':      round(float(today['close']), 2),
-                'Direction':  '🟢 Long',
                 'Setup':      best['type'],
                 'Level':      best['level'],
                 'Detail':     best['detail'],

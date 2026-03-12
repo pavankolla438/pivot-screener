@@ -121,30 +121,18 @@ def to_json(df):
     return jsonify({'count': len(df), 'data': df.to_dict(orient='records')})
 
 def ensure_preloaded():
-    from market_context import UNIVERSE_MODE, MIN_VOL
+    from market_context import UNIVERSE_MODE
     key = f"ALL_{get_last_trading_day()}_{UNIVERSE_MODE}"
     if key in _preloaded:
         return
     print(f"\n[Preload] Starting preload (mode: {UNIVERSE_MODE})...")
-    contexts = get_context('ALL')
-    ctx = contexts.get('ALL')
+    contexts = get_context('NSE')
+    ctx = contexts.get('NSE')
     if ctx and ctx.daily is not None:
-        # ctx.daily is already universe-filtered (ETF, price, today_vol)
+        # ctx.daily is already universe-filtered — preload only what scanners will use
         symbols = ctx.daily['symbol'].tolist()
         preload_histories(symbols, 'NSE', intervals=('1d','1wk'), lookback_bars=252)
         store_stats()
-
-        # ── Avg-vol filter: drop symbols where 21-day avg volume < MIN_VOL ──
-        # Runs after history is loaded so bulk volume stats are available.
-        if MIN_VOL > 0:
-            from volume_helper import filter_low_volume_symbols
-            keep = filter_low_volume_symbols('NSE', min_vol=MIN_VOL)
-            if keep:
-                before = len(ctx.daily)
-                ctx.daily = ctx.daily[ctx.daily['symbol'].isin(keep)].reset_index(drop=True)
-                removed   = before - len(ctx.daily)
-                print(f"[Preload] Avg-vol filter (21d avg + today >= {MIN_VOL:,}): "                      f"{before} → {len(ctx.daily)} stocks (−{removed} illiquid)")
-
     _preloaded.add(key)
     print(f"[Preload] Complete — {len(ctx.daily) if ctx and ctx.daily is not None else 0} symbols.\n")
 
@@ -397,27 +385,9 @@ def api_fo_count():
 
 # -- SCHEDULER --
 
-def _evening_refresh():
-    """
-    Runs at 6:30 PM IST Mon-Fri, after NSE publishes today's bhavcopy (~6-7pm).
-    Clears all in-memory caches so the next API call triggers a fresh preload
-    with today's data — without requiring a Railway restart.
-    """
-    from data_fetcher import _last_trading_day_cache
-    from market_context import clear_context
-    _last_trading_day_cache.clear()   # force re-detect today's trading day
-    _cache.clear()                    # clear scanner result cache
-    clear_store()                     # clear yfinance history store
-    clear_context()                   # clear bhavcopy context cache
-    _preloaded.clear()                # force re-preload on next request
-    print("[Scheduler] Evening refresh complete — caches cleared, today's data will load on next request.")
-
-
 def start_scheduler():
     IST = pytz.timezone('Asia/Kolkata')
     scheduler = BackgroundScheduler(timezone=IST)
-
-    # 8:30 AM — morning digest (uses previous day's confirmed data)
     scheduler.add_job(
         func=lambda: run_daily_digest(_cache),
         trigger=CronTrigger(hour=8, minute=30,
@@ -427,22 +397,8 @@ def start_scheduler():
         name='Daily Digest + Preload',
         replace_existing=True,
     )
-
-    # 6:30 PM — evening refresh (picks up today's bhavcopy after NSE publishes it)
-    scheduler.add_job(
-        func=_evening_refresh,
-        trigger=CronTrigger(hour=18, minute=30,
-                            day_of_week='mon-fri',
-                            timezone=IST),
-        id='evening_refresh',
-        name='Evening Data Refresh',
-        replace_existing=True,
-    )
-
     scheduler.start()
-    print("[Scheduler] Jobs scheduled:")
-    print("            8:30 AM IST Mon-Fri — morning digest")
-    print("            6:30 PM IST Mon-Fri — evening data refresh")
+    print("[Scheduler] Daily digest scheduled at 8:30 AM IST (Mon-Fri)")
     return scheduler
 
 _scheduler = start_scheduler()
