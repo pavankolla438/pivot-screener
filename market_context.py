@@ -14,6 +14,7 @@ _context_cache = {}
 
 UNIVERSE_MODE = os.environ.get('UNIVERSE_MODE', 'CASH_AND_FNO').upper()
 MIN_PRICE     = float(os.environ.get('MIN_PRICE', '20'))
+MIN_VOL       = int(os.environ.get('MIN_VOL',   '5000'))  # min today's traded volume
 
 # ─────────────────────────────────────────
 # NON-EQUITY FILTER — 10 layers
@@ -44,7 +45,11 @@ _SGB = re.compile(r'^SGB', re.IGNORECASE)
 _GSEC = re.compile(r'(\d+\.\d+GS\d{4}|GS\d{4})', re.IGNORECASE)
 
 # 6. Instruments ending in 3+ digits: year-coded bonds (0433), 360-series ETFs (GOLD360, SILVER360)
-_BOND_YEAR = re.compile(r'\d{3,}$')
+_BOND_YEAR     = re.compile(r'\d{3,}$')
+_LIQUID_PREFIX = re.compile(r'^LIQUID',             re.IGNORECASE)  # LIQUIDSBI, LIQUIDSHRI…
+_SETF_PREFIX   = re.compile(r'^SETF',               re.IGNORECASE)  # SETFNIF50, SETFGOLD…
+_LIC_FUND      = re.compile(r'^LIC(NET|MFN|NFN|MF[A-Z])', re.IGNORECASE)  # LIC ETF/MF (not LICI/LICHSGFIN)
+_INVESCO_ETF   = re.compile(r'^IVZIN',              re.IGNORECASE)  # IVZINNIFTY…
 
 # 7. Bharat Bond ETF series ending in B+2digits (ICICIB22, ICICIB30 etc.)
 _BHARAT_BOND = re.compile(r'B\d{2}$', re.IGNORECASE)
@@ -95,6 +100,10 @@ def _is_non_equity(symbol: str) -> bool:
         bool(_AMC_ONLY.match(symbol))       or
         bool(_AMC_PREFIX_PAT.match(symbol) and _FACTOR_SUFF_PAT.search(symbol)) or
         bool(_STANDALONE_STRATEGY.match(symbol)) or
+        bool(_LIQUID_PREFIX.match(symbol))  or
+        bool(_SETF_PREFIX.match(symbol))    or
+        bool(_LIC_FUND.match(symbol))       or
+        bool(_INVESCO_ETF.match(symbol))    or
         bool(_NUMERIC.match(symbol))        or
         bool(_TOO_LONG.match(symbol))
     )
@@ -124,7 +133,13 @@ def apply_universe_filter(daily_df: pd.DataFrame) -> pd.DataFrame:
     daily_df = daily_df[daily_df['close'] >= MIN_PRICE].reset_index(drop=True)
     after_price = len(daily_df)
 
-    # Step 3 — FNO_ONLY subsetting (optional)
+    # Step 3 — remove illiquid stocks (today's volume < MIN_VOL)
+    if 'volume' in daily_df.columns and MIN_VOL > 0:
+        daily_df['volume'] = pd.to_numeric(daily_df['volume'], errors='coerce')
+        daily_df = daily_df[daily_df['volume'].fillna(0) >= MIN_VOL].reset_index(drop=True)
+    after_vol = len(daily_df)
+
+    # Step 4 — FNO_ONLY subsetting (optional)
     if UNIVERSE_MODE == 'FNO_ONLY':
         fo_syms = get_fo_symbol_set()
         if fo_syms:
@@ -136,6 +151,7 @@ def apply_universe_filter(daily_df: pd.DataFrame) -> pd.DataFrame:
         f"[Universe] {UNIVERSE_MODE}: {original} raw → "
         f"{after_ne} (−{original - after_ne} non-equity) → "
         f"{after_price} (−{after_ne - after_price} <₹{MIN_PRICE:.0f}) → "
+        f"{after_vol} (−{after_price - after_vol} vol<{MIN_VOL:,}) → "
         f"{len(daily_df)} stocks"
     )
     return daily_df

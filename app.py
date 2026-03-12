@@ -121,7 +121,7 @@ def to_json(df):
     return jsonify({'count': len(df), 'data': df.to_dict(orient='records')})
 
 def ensure_preloaded():
-    from market_context import UNIVERSE_MODE
+    from market_context import UNIVERSE_MODE, MIN_VOL
     key = f"ALL_{get_last_trading_day()}_{UNIVERSE_MODE}"
     if key in _preloaded:
         return
@@ -129,10 +129,22 @@ def ensure_preloaded():
     contexts = get_context('ALL')
     ctx = contexts.get('ALL')
     if ctx and ctx.daily is not None:
-        # ctx.daily is already universe-filtered — preload only what scanners will use
+        # ctx.daily is already universe-filtered (ETF, price, today_vol)
         symbols = ctx.daily['symbol'].tolist()
         preload_histories(symbols, 'NSE', intervals=('1d','1wk'), lookback_bars=252)
         store_stats()
+
+        # ── Avg-vol filter: drop symbols where 21-day avg volume < MIN_VOL ──
+        # Runs after history is loaded so bulk volume stats are available.
+        if MIN_VOL > 0:
+            from volume_helper import filter_low_volume_symbols
+            keep = filter_low_volume_symbols('NSE', min_vol=MIN_VOL)
+            if keep:
+                before = len(ctx.daily)
+                ctx.daily = ctx.daily[ctx.daily['symbol'].isin(keep)].reset_index(drop=True)
+                removed   = before - len(ctx.daily)
+                print(f"[Preload] Avg-vol filter (21d avg + today >= {MIN_VOL:,}): "                      f"{before} → {len(ctx.daily)} stocks (−{removed} illiquid)")
+
     _preloaded.add(key)
     print(f"[Preload] Complete — {len(ctx.daily) if ctx and ctx.daily is not None else 0} symbols.\n")
 

@@ -46,6 +46,8 @@ def compute_volume_stats_bulk(exchange):
         vol_rising = bool(vols[-1] > vols[-2] > vols[-3])
 
         results[sym] = {
+            'today_vol':  int(today_vol),
+            'avg_vol_21': int(avg_vol),
             'vol_ratio':  vol_ratio,
             'vol_rising': vol_rising,
         }
@@ -123,3 +125,26 @@ def enrich_with_volume(df, exchange_col='Exchange', symbol_col='Symbol'):
     df['Vol Ratio']  = vol_ratios
     df['Vol Rising'] = vol_risings
     return df
+
+# ─────────────────────────────────────────
+# UNIVERSE VOLUME FILTER
+# ─────────────────────────────────────────
+
+def filter_low_volume_symbols(exchange: str, min_vol: int = 5000) -> set:
+    """
+    Returns the set of symbols that pass BOTH volume checks:
+      • avg_vol_21 >= min_vol  (chronically illiquid → never worth scanning)
+      • today_vol  >= min_vol  (frozen today → skip even if normally liquid)
+
+    Called from ensure_preloaded() after history is loaded, so history store
+    is guaranteed to be populated. Returns empty set on error (no filtering).
+    """
+    stats = compute_volume_stats_bulk(exchange)
+    if not stats:
+        return set()
+
+    keep = {
+        sym for sym, s in stats.items()
+        if s.get('avg_vol_21', 0) >= min_vol and s.get('today_vol', 0) >= min_vol
+    }
+    return keep
