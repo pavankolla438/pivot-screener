@@ -81,29 +81,21 @@ def is_trading_day(d: date) -> bool:
 # DATE HELPERS
 # ─────────────────────────────────────────
 
-# Cache only confirmed prior days — never freeze on "today not yet available"
-# { date: trading_day_date }  — one entry per calendar date
-_last_trading_day_cache: dict = {}
+# Keyed by today's date string so it auto-invalidates the next calendar day.
+# This also means _last_trading_day_cache.clear() works from evening_refresh.
+_last_trading_day_cache = {}
 
 def get_last_trading_day():
     """
     Returns most recent NSE trading day for which bhavcopy data is available.
     Pure local check — zero HTTP calls.
-
-    Caching strategy:
-    - If today's bhavcopy exists on disk → cache it and return today.
-    - If today's bhavcopy doesn't exist yet → fall back to prior day,
-      but do NOT permanently cache that answer. Next call re-checks,
-      so the moment today's file appears after ~6pm IST, the scanner
-      automatically picks up today's data without a restart.
-    - Prior confirmed days (candidate < today) are cached permanently
-      since they'll never change.
+    Result is cached per calendar day so it re-evaluates automatically at midnight.
     """
-    today = datetime.today().date()
+    today     = datetime.today().date()
+    today_str = str(today)
 
-    # Return today's confirmed answer if we already have it
-    if today in _last_trading_day_cache:
-        return _last_trading_day_cache[today]
+    if today_str in _last_trading_day_cache:
+        return _last_trading_day_cache[today_str]
 
     candidate = today
 
@@ -115,19 +107,17 @@ def get_last_trading_day():
         cache_path = os.path.join(DATA_DIR, f"nse_bhav_{candidate.strftime('%Y%m%d')}.csv")
 
         if os.path.exists(cache_path):
-            # Found a bhavcopy on disk — cache this answer keyed by today's date
-            _last_trading_day_cache[today] = candidate
+            # Only cache if it's a past day — today's result stays uncached
+            # until the bhavcopy file exists, so evening_refresh can pick it up
+            if candidate < today:
+                _last_trading_day_cache[today_str] = candidate
             return candidate
 
         if candidate < today:
-            # Confirmed prior day — bhavcopy exists without a file check
-            # (NSE published it, we just haven't downloaded yet, or it's old)
-            _last_trading_day_cache[today] = candidate
+            _last_trading_day_cache[today_str] = candidate
             return candidate
 
-        # candidate == today, no file yet — bhavcopy not published yet.
-        # Do NOT cache — fall back one day but stay uncached so next
-        # call re-checks (file may appear after market close ~6pm IST).
+        # candidate == today and file doesn't exist yet — don't cache, step back
         candidate -= timedelta(days=1)
 
     raise RuntimeError("Could not determine last trading day in the past 14 days.")

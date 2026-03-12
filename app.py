@@ -391,25 +391,28 @@ def _evening_refresh():
     Downloads today's bhavcopy first so get_last_trading_day() detects it,
     then clears all caches so the next API request preloads today's data.
     """
-    from datetime import date as _date
-    from data_fetcher import download_nse_bhavcopy, is_trading_day, _last_trading_day_cache
-    from market_context import clear_context
+    try:
+        from datetime import date as _date
+        from data_fetcher import download_nse_bhavcopy, is_trading_day, _last_trading_day_cache
+        from market_context import clear_context
 
-    today = _date.today()
-    if is_trading_day(today):
-        print(f"[Scheduler] Evening refresh: downloading bhavcopy for {today}...")
-        df = download_nse_bhavcopy(today)
-        if df is not None and not df.empty:
-            print(f"[Scheduler] Bhavcopy for {today}: {len(df)} rows downloaded")
-        else:
-            print(f"[Scheduler] Bhavcopy download failed for {today}")
+        today = _date.today()
+        if is_trading_day(today):
+            print(f"[Scheduler] Evening refresh: downloading bhavcopy for {today}...")
+            df = download_nse_bhavcopy(today)
+            if df is not None and not df.empty:
+                print(f"[Scheduler] Bhavcopy for {today}: {len(df)} rows downloaded")
+            else:
+                print(f"[Scheduler] Bhavcopy download failed for {today} — will retry on next request")
 
-    _last_trading_day_cache.clear()
-    _cache.clear()
-    clear_store()
-    clear_context()
-    _preloaded.clear()
-    print("[Scheduler] Evening refresh complete — next request will load today's data.")
+        _last_trading_day_cache.clear()   # safe: now a dict, not None
+        _cache.clear()
+        clear_store()
+        clear_context()
+        _preloaded.clear()
+        print("[Scheduler] Evening refresh complete — next request will load today's data.")
+    except Exception as e:
+        print(f"[Scheduler] ERROR in evening_refresh: {e}")
 
 
 def start_scheduler():
