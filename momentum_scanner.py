@@ -12,7 +12,7 @@ RSI_PERIOD      = 14
 MACD_FAST       = 12
 MACD_SLOW       = 26
 MACD_SIGNAL     = 9
-MACD_LOOKBACK   = 1     # bars to look back for crossover
+MACD_LOOKBACK   = 3     # bars to look back for crossover (catches crosses within last 3 days)
 DIV_LOOKBACK    = 15    # bars to search for divergence swing points
 MIN_DIV_DIFF    = 2.0   # minimum RSI difference to count as divergence
 MIN_PRICE_DIFF  = 1.0   # minimum price % difference between swing points
@@ -29,22 +29,35 @@ def compute_rsi(closes, period=RSI_PERIOD):
     delta  = np.diff(closes)
     gains  = np.where(delta > 0, delta, 0.0)
     losses = np.where(delta < 0, -delta, 0.0)
-    avg_g  = gains[:period].mean()
-    avg_l  = losses[:period].mean()
-    rsi    = np.empty(len(closes))
-    rsi[:period + 1] = np.nan
-    for i in range(period, len(delta)):
-        avg_g   = (avg_g * (period - 1) + gains[i])  / period
-        avg_l   = (avg_l * (period - 1) + losses[i]) / period
-        rsi[i + 1] = 100 - 100 / (1 + avg_g / avg_l) if avg_l else 100.0
+    avg_g  = np.convolve(gains,  np.ones(period)/period, mode='valid')[:1][0]
+    avg_l  = np.convolve(losses, np.ones(period)/period, mode='valid')[:1][0]
+    rsi    = np.zeros(len(closes))
+    if avg_l == 0:
+        rsi[period] = 100.0
+    else:
+        rs         = avg_g / avg_l
+        rsi[period] = 100 - 100 / (1 + rs)
+    for i in range(period + 1, len(closes)):
+        g       = gains[i - 1]
+        l       = losses[i - 1]
+        avg_g   = (avg_g * (period - 1) + g) / period
+        avg_l   = (avg_l * (period - 1) + l) / period
+        rs      = avg_g / avg_l if avg_l != 0 else 100
+        rsi[i]  = 100 - 100 / (1 + rs)
     return rsi
 
 def compute_macd(closes):
-    s          = pd.Series(closes, dtype=float)
-    ema_fast   = s.ewm(span=MACD_FAST,   adjust=False).mean().to_numpy()
-    ema_slow   = s.ewm(span=MACD_SLOW,   adjust=False).mean().to_numpy()
+    def ema(arr, span):
+        k   = 2 / (span + 1)
+        out = np.zeros(len(arr))
+        out[0] = arr[0]
+        for i in range(1, len(arr)):
+            out[i] = arr[i] * k + out[i-1] * (1 - k)
+        return out
+    ema_fast   = ema(closes, MACD_FAST)
+    ema_slow   = ema(closes, MACD_SLOW)
     macd_line  = ema_fast - ema_slow
-    signal     = pd.Series(macd_line).ewm(span=MACD_SIGNAL, adjust=False).mean().to_numpy()
+    signal     = ema(macd_line, MACD_SIGNAL)
     histogram  = macd_line - signal
     return macd_line, signal, histogram
 
