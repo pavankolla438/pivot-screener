@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, date
 import zipfile
 import io
 
-DATA_DIR = r"C:\pivot_screener\data"
+DATA_DIR = os.environ.get("DATA_ROOT", r"C:\pivot_screener\data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 NSE_HEADERS = {

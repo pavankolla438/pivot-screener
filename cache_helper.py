@@ -3,28 +3,12 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 
-# ─────────────────────────────────────────
-# PATHS — DATA_ROOT env var for Railway/Windows compat
-# ─────────────────────────────────────────
-
-_DEFAULT_ROOT  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-DATA_ROOT      = os.environ.get('DATA_ROOT', _DEFAULT_ROOT)
-CACHE_DIR      = os.path.join(DATA_ROOT, 'yf_cache')
-BULK_CACHE_DIR = os.path.join(DATA_ROOT, 'bulk_cache')
-
-os.makedirs(CACHE_DIR,      exist_ok=True)
-os.makedirs(BULK_CACHE_DIR, exist_ok=True)
-
-
-def _trading_day_stamp():
-    """Last trading day as string — cache stays valid over weekends/holidays."""
-    from data_fetcher import get_last_trading_day
-    return get_last_trading_day().strftime("%Y%m%d")
-
+CACHE_DIR = os.path.join(os.environ.get("DATA_ROOT", r"C:\pivot_screener\data"), "yf_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 def _cache_path(symbol, exchange, interval):
-    return os.path.join(CACHE_DIR, f"{symbol}_{exchange}_{interval}_{_trading_day_stamp()}.csv")
-
+    today = datetime.today().strftime("%Y%m%d")
+    return os.path.join(CACHE_DIR, f"{symbol}_{exchange}_{interval}_{today}.csv")
 
 def fetch_history_cached(symbol, exchange, interval='1d', lookback_bars=60):
     cache_file = _cache_path(symbol, exchange, interval)
@@ -47,6 +31,7 @@ def fetch_history_cached(symbol, exchange, interval='1d', lookback_bars=60):
         start = datetime.today() - timedelta(days=lookback_bars * 2)
 
     try:
+        # Use yf.download for single symbol — faster than Ticker.history
         raw = yf.download(
             tickers     = ticker,
             start       = start.strftime("%Y-%m-%d"),
@@ -59,6 +44,7 @@ def fetch_history_cached(symbol, exchange, interval='1d', lookback_bars=60):
             pd.DataFrame().to_csv(cache_file)
             return None
 
+        # yf.download returns MultiIndex columns for single ticker too
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.droplevel(1)
 
@@ -72,11 +58,11 @@ def fetch_history_cached(symbol, exchange, interval='1d', lookback_bars=60):
     except Exception:
         return None
 
-
 def fetch_histories_batch(symbols, exchange, interval='1d', lookback_bars=60):
     """
     Batch fetch histories for multiple symbols using yf.download().
-    Returns dict: { symbol: df }. Only fetches symbols not already cached.
+    Returns dict: { symbol: df }
+    Only fetches symbols not already cached.
     """
     results       = {}
     to_fetch      = []
@@ -84,6 +70,7 @@ def fetch_histories_batch(symbols, exchange, interval='1d', lookback_bars=60):
 
     suffix = ".NS" if exchange == "NSE" else ".BO"
 
+    # Check cache first
     for sym in symbols:
         cache_file = _cache_path(sym, exchange, interval)
         if os.path.exists(cache_file):
@@ -161,7 +148,6 @@ def fetch_histories_batch(symbols, exchange, interval='1d', lookback_bars=60):
 
     return results
 
-
 def clear_old_cache(days_to_keep=2):
     cutoff = datetime.today() - timedelta(days=days_to_keep)
     deleted = 0
@@ -177,18 +163,22 @@ def clear_old_cache(days_to_keep=2):
     if deleted:
         print(f"[Cache] Cleaned up {deleted} old cache files.")
 
+# ─────────────────────────────────────────
+# BULK CACHE — single file per interval
+# ─────────────────────────────────────────
 
-# ─────────────────────────────────────────
-# BULK CACHE — single parquet per interval
-# ─────────────────────────────────────────
+BULK_CACHE_DIR = os.path.join(os.environ.get("DATA_ROOT", r"C:\pivot_screener\data"), "bulk_cache")
+os.makedirs(BULK_CACHE_DIR, exist_ok=True)
 
 def _bulk_cache_path(exchange, interval):
-    # Normalize: 'ALL'/'BOTH' are logical groupings, data is always NSE
-    exch = 'NSE' if exchange in ('ALL', 'BOTH') else exchange
-    return os.path.join(BULK_CACHE_DIR, f"{exch}_{interval}_{_trading_day_stamp()}.parquet")
-
+    today = datetime.today().strftime("%Y%m%d")
+    return os.path.join(BULK_CACHE_DIR, f"{exchange}_{interval}_{today}.parquet")
 
 def save_bulk_cache(data_dict, exchange, interval):
+    """
+    Saves all symbol histories into a single parquet file.
+    data_dict: { symbol: df }
+    """
     frames = []
     for sym, df in data_dict.items():
         if df is None or df.empty:
@@ -201,10 +191,13 @@ def save_bulk_cache(data_dict, exchange, interval):
     combined = pd.concat(frames)
     path = _bulk_cache_path(exchange, interval)
     combined.to_parquet(path)
-    print(f"[BulkCache] Saved {len(data_dict)} symbols -> {os.path.basename(path)}")
-
+    print(f"[BulkCache] Saved {len(data_dict)} symbols → {os.path.basename(path)}")
 
 def load_bulk_cache(exchange, interval):
+    """
+    Loads combined parquet file.
+    Returns raw combined DataFrame with '_sym' column.
+    """
     path = _bulk_cache_path(exchange, interval)
     if not os.path.exists(path):
         return None
@@ -216,7 +209,6 @@ def load_bulk_cache(exchange, interval):
     except Exception as e:
         print(f"[BulkCache] Load error: {e}")
         return None
-
 
 def clear_old_bulk_cache(days_to_keep=2):
     cutoff = datetime.today() - timedelta(days=days_to_keep)
