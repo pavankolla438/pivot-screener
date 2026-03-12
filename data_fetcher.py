@@ -106,19 +106,31 @@ def get_last_trading_day():
 
         cache_path = os.path.join(DATA_DIR, f"nse_bhav_{candidate.strftime('%Y%m%d')}.csv")
 
-        if candidate == today:
-            # Today: only return if bhavcopy file actually exists on disk.
-            # Never cache — re-check every call until the file appears.
-            if os.path.exists(cache_path):
-                return today
-            # Not published yet — step back to yesterday, keep going
-            candidate -= timedelta(days=1)
-            continue
+        if os.path.exists(cache_path):
+            # Only cache if it's a past day — today's result stays uncached
+            # until the bhavcopy file exists, so evening_refresh can pick it up
+            if candidate < today:
+                _last_trading_day_cache[today_str] = candidate
+            return candidate
 
-        # Past day: it's a confirmed trading day — return and cache it.
-        # No file-existence check needed for past days.
-        _last_trading_day_cache[today_str] = candidate
-        return candidate
+        if candidate < today:
+            _last_trading_day_cache[today_str] = candidate
+            return candidate
+
+        # candidate == today and file doesn't exist yet — don't cache, step back
+        candidate -= timedelta(days=1)
+
+    # No cached files found — try downloading the most recent trading day
+    # This happens after a fresh Railway deploy with an empty filesystem.
+    candidate = datetime.today().date()
+    for _ in range(7):
+        if is_trading_day(candidate) and candidate < datetime.today().date():
+            print(f"[LTD] No cached files found, downloading bhavcopy for {candidate}...")
+            df = download_nse_bhavcopy(candidate)
+            if df is not None and not df.empty:
+                _last_trading_day_cache[str(datetime.today().date())] = candidate
+                return candidate
+        candidate -= timedelta(days=1)
 
     raise RuntimeError("Could not determine last trading day in the past 14 days.")
 

@@ -420,8 +420,14 @@ def start_scheduler():
     scheduler = BackgroundScheduler(timezone=IST)
 
     # 8:30 AM — morning digest using previous confirmed trading day
+    def _safe_digest():
+        try:
+            run_daily_digest(_cache)
+        except Exception as e:
+            print(f"[Scheduler] ERROR in daily_digest: {e}")
+
     scheduler.add_job(
-        func=lambda: run_daily_digest(_cache),
+        func=_safe_digest,
         trigger=CronTrigger(hour=8, minute=30,
                             day_of_week='mon-fri',
                             timezone=IST),
