@@ -385,9 +385,38 @@ def api_fo_count():
 
 # -- SCHEDULER --
 
+def _evening_refresh():
+    """
+    Runs at 6:30 PM IST Mon-Fri after NSE publishes today's bhavcopy (~6-7pm).
+    Downloads today's bhavcopy first so get_last_trading_day() detects it,
+    then clears all caches so the next API request preloads today's data.
+    """
+    from datetime import date as _date
+    from data_fetcher import download_nse_bhavcopy, is_trading_day, _last_trading_day_cache
+    from market_context import clear_context
+
+    today = _date.today()
+    if is_trading_day(today):
+        print(f"[Scheduler] Evening refresh: downloading bhavcopy for {today}...")
+        df = download_nse_bhavcopy(today)
+        if df is not None and not df.empty:
+            print(f"[Scheduler] Bhavcopy for {today}: {len(df)} rows downloaded")
+        else:
+            print(f"[Scheduler] Bhavcopy download failed for {today}")
+
+    _last_trading_day_cache.clear()
+    _cache.clear()
+    clear_store()
+    clear_context()
+    _preloaded.clear()
+    print("[Scheduler] Evening refresh complete — next request will load today's data.")
+
+
 def start_scheduler():
     IST = pytz.timezone('Asia/Kolkata')
     scheduler = BackgroundScheduler(timezone=IST)
+
+    # 8:30 AM — morning digest using previous confirmed trading day
     scheduler.add_job(
         func=lambda: run_daily_digest(_cache),
         trigger=CronTrigger(hour=8, minute=30,
@@ -397,8 +426,20 @@ def start_scheduler():
         name='Daily Digest + Preload',
         replace_existing=True,
     )
+
+    # 6:30 PM — download today's bhavcopy then clear all caches
+    scheduler.add_job(
+        func=_evening_refresh,
+        trigger=CronTrigger(hour=18, minute=30,
+                            day_of_week='mon-fri',
+                            timezone=IST),
+        id='evening_refresh',
+        name='Evening Data Refresh',
+        replace_existing=True,
+    )
+
     scheduler.start()
-    print("[Scheduler] Daily digest scheduled at 8:30 AM IST (Mon-Fri)")
+    print("[Scheduler] Jobs: 8:30 AM digest | 6:30 PM evening refresh")
     return scheduler
 
 _scheduler = start_scheduler()
