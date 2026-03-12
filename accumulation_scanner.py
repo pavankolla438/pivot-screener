@@ -6,7 +6,7 @@ from market_context import get_context
 
 VOL_AVG_PERIOD    = 21
 TIGHT_RANGE_PCT   = 2.0
-FLAT_MOVE_PCT     = 0.5
+FLAT_MOVE_PCT     = 1.0   # relaxed: absorption candles can move up to 1%
 VOL_SPIKE_RATIO   = 2.0
 VOL_BUILD_BARS    = 5
 LOW_52W_PCT       = 7.0
@@ -101,26 +101,14 @@ def score_symbol(df):
     s3 = signal_obv_rising(df)
     s4 = signal_near_52w_low_vol_building(df)
 
-    # check vol building strength for s3+s4 combo qualification
-    vol_building_strong = False
-    if len(df) >= VOL_BUILD_BARS + 20 and 'volume' in df.columns:
-        vols = pd.to_numeric(df['volume'], errors='coerce').values
-        recent_avg = float(np.mean(vols[-VOL_BUILD_BARS:]))
-        prior_avg  = float(np.mean(vols[-VOL_BUILD_BARS-20:-VOL_BUILD_BARS]))
-        if prior_avg > 0 and recent_avg / prior_avg >= 1.3:
-            vol_building_strong = True
-
-    # need at least one active signal OR strong OBV+52WLow combo
-    has_active = s1 or s2
-    has_strong_passive = s3 and s4 and vol_building_strong
-    if not has_active and not has_strong_passive:
+    # Gate: any single signal qualifies — min_score filters quality downstream
+    score = sum([s1, s2, s3, s4])
+    if score == 0:
         return {
             'score': 0, 'signals': '',
             'tight_vol_rising': False, 'vol_spike_flat': False,
             'obv_rising': False, 'near_52w_low': False,
         }
-
-    score = sum([s1, s2, s3, s4])
     tags  = []
     if s1: tags.append('Tight+Vol↑')
     if s2: tags.append('Vol Spike')
@@ -183,7 +171,6 @@ def run_accumulation_scan(exchange='ALL', min_score=1, min_vol_ratio=0.0):
                 'Symbol':      sym,
                 'Exchange':    exch,
                 'Price':       round(float(today['close']), 2),
-                'Direction':   '🟢 Long',
                 'Score':       scored['score'],
                 'Signals':     scored['signals'],
                 'Tight+Vol↑':  '✅' if scored['tight_vol_rising'] else '',
