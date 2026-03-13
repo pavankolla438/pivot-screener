@@ -375,18 +375,44 @@ class MarketRegime:
             f"{diverg}"
         )
 
+    # Direction bias per regime — applied on top of scanner bias
+    _DIRECTION_BIAS = {
+        'TRENDING_DOWN': {'Long': 0.5,  'Short': 1.3, 'Mixed': 0.8, 'Neutral': 0.7},
+        'TRENDING_UP':   {'Long': 1.3,  'Short': 0.5, 'Mixed': 0.8, 'Neutral': 0.8},
+        'RANGING':       {'Long': 1.0,  'Short': 1.0, 'Mixed': 1.0, 'Neutral': 1.1},
+        'VOLATILE':      {'Long': 0.8,  'Short': 0.8, 'Mixed': 0.9, 'Neutral': 1.0},
+    }
+
+    @staticmethod
+    def _parse_direction(trigger: str) -> str:
+        """Extract Long/Short/Mixed/Neutral from any trigger or direction string."""
+        t = str(trigger)
+        if any(x in t for x in ('Long', 'Breakout', 'Bull', '🟢')): return 'Long'
+        if any(x in t for x in ('Short', 'Breakdown', 'Bear', '🔴')): return 'Short'
+        if 'Mixed' in t or '⚡' in t: return 'Mixed'
+        return 'Neutral'
+
     def get_bias(self, scanner: str, trigger: str = '') -> float:
         """
         Get the combined multiplier for a (scanner, trigger) pair.
         scanner : 'Pivot' | 'Darvas' | 'Trendline' | 'Inside Bar' | 'Accumulation' | 'Momentum'
-        trigger : 'Breakout' | 'Breakdown' | 'Baby' | 'Attempt' | ''
-        Returns float between 0.5 and 1.5.
+        trigger : any Direction or Trigger string from scanner output
+        Returns float — multiplied scanner × trigger × direction bias.
         """
         sb = self.scanner_bias
+
+        # Scanner-level bias (e.g. Accumulation=0.9 in downtrend)
         scanner_mult = sb.get(scanner, 1.0)
+
+        # Trigger-level bias for named triggers (Breakout/Breakdown/Baby/Attempt)
         trigger_mult = sb.get(trigger, 1.0) if trigger else 1.0
-        # blend: scanner bias 60%, trigger bias 40%
-        return round(scanner_mult * 0.6 + trigger_mult * 0.4, 3)
+
+        # Direction bias — the most important: Long in downtrend gets 0.5×
+        direction     = self._parse_direction(trigger)
+        dir_bias      = self._DIRECTION_BIAS.get(self.label, {})
+        direction_mult = dir_bias.get(direction, 1.0)
+
+        return round(scanner_mult * trigger_mult * direction_mult, 3)
 
     def to_dict(self) -> dict:
         return {
